@@ -54,6 +54,7 @@
   .dot.synced{background:var(--accent);box-shadow:0 0 6px var(--accent);}
   .dot.syncing{background:var(--warn);animation:pulse 1s infinite;}
   .dot.err{background:var(--danger);}
+  .dot.warn{background:var(--warn);}
   @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
   .role-tag{
     font-size:9.5px;
@@ -442,7 +443,7 @@
   <label class="dropzone" id="dropzone" style="display:none;">
     <input type="file" id="fileInput" accept=".csv" multiple>
     <p class="main">Drop <span class="accent">.csv</span> file(s) here, or click to browse</p>
-    <p>expects columns: PSN ID (username/player), IP, location — synced to the cloud, so it's here next time on any device</p>
+    <p>expects columns: PSN ID (username/player), IP, location — synced to the cloud; if you're offline it queues and syncs automatically once you're back online</p>
   </label>
 
   <div class="toolbar" id="toolbar" style="display:none;">
@@ -499,6 +500,51 @@ function setSyncStatus(state, msg){
   syncLabel.textContent = msg;
 }
 function isAdmin(){ return role === 'admin'; }
+
+// ---------- offline upload queue ----------
+// New CSV rows are queued in localStorage first, then we try to push them to
+// Supabase right away. If that fails (no connection), they stay queued and
+// get retried automatically when the browser comes back online.
+const PENDING_KEY = 'peerlog_pending_uploads';
+function getPendingRows(){
+  try{ return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+function setPendingRows(rows){
+  try{ localStorage.setItem(PENDING_KEY, JSON.stringify(rows)); }catch(e){ console.error(e); }
+}
+function updateSyncIndicator(){
+  const n = getPendingRows().length;
+  if(n > 0){
+    setSyncStatus('warn', `${n} row${n>1?'s':''} queued — waiting for connection`);
+  } else if(navigator.onLine === false){
+    setSyncStatus('warn', 'offline');
+  } else {
+    setSyncStatus('synced', 'synced');
+  }
+}
+let flushInFlight = false;
+async function flushPendingUploads(){
+  if(flushInFlight) return;
+  const pending = getPendingRows();
+  if(!pending.length) return;
+  if(navigator.onLine === false){ updateSyncIndicator(); return; }
+  flushInFlight = true;
+  setSyncStatus('syncing', `syncing ${pending.length} queued row${pending.length>1?'s':''}...`);
+  try{
+    await insertRows(pending);
+    setPendingRows([]);
+    await refreshFromCloud();
+    showToast(`synced ${pending.length} queued row${pending.length>1?'s':''}`);
+  }catch(e){
+    console.error(e);
+    updateSyncIndicator();
+  }
+  flushInFlight = false;
+}
+window.addEventListener('online', flushPendingUploads);
+window.addEventListener('offline', updateSyncIndicator);
+setInterval(flushPendingUploads, 15000);
 
 // ---------- hashing ----------
 async function sha256Hex(str){
@@ -700,14 +746,24 @@ function showGate(){
   draw();
 }
 
-function showApp(){
+async function showApp(){
   gateScreenEl.innerHTML = '';
   appEl.style.display = 'block';
   roleTag.textContent = isAdmin() ? 'admin' : 'viewer';
   roleTag.className = 'role-tag' + (isAdmin() ? ' admin' : '');
   dropzone.style.display = isAdmin() ? 'block' : 'none';
   changePassBtn.style.display = isAdmin() ? 'inline-block' : 'none';
-  refreshFromCloud();
+
+  if(isAdmin() && getPendingRows().length){
+    await flushPendingUploads();
+  }
+  if(getPendingRows().length){
+    // still queued (offline) — show current cloud data anyway, then restore the queue indicator
+    await refreshFromCloud();
+    updateSyncIndicator();
+  } else {
+    await refreshFromCloud();
+  }
 }
 
 logoutBtn.addEventListener('click', ()=>{
@@ -854,22 +910,18 @@ function parseFile(file){
 
 async function handleFiles(files){
   if(!isAdmin()) return;
-  setSyncStatus('syncing', 'uploading...');
+  setSyncStatus('syncing', 'reading file(s)...');
   const results = await Promise.all(files.map(parseFile));
-  const allNewRows = results.flat();
+  const allNewRows = results.flat().map(r => ({username:r.username, ip:r.ip, location:r.location}));
   if(!allNewRows.length){
-    setSyncStatus('synced', 'synced');
+    updateSyncIndicator();
     return;
   }
-  try{
-    await insertRows(allNewRows.map(r => ({username:r.username, ip:r.ip, location:r.location})));
-    await refreshFromCloud();
-    showToast(`added ${allNewRows.length} rows`);
-  }catch(e){
-    console.error(e);
-    setSyncStatus('err', 'upload failed — check connection');
-    showToast('upload failed — check connection', true);
-  }
+  const pending = getPendingRows();
+  pending.push(...allNewRows);
+  setPendingRows(pending);
+  showToast(`queued ${allNewRows.length} row${allNewRows.length>1?'s':''}`);
+  await flushPendingUploads();
 }
 
 function buildGroups(){
@@ -980,9 +1032,11 @@ async function saveLabel(key, value){
 function ipCell(ip, ids, opts={}){
   const {hidden=false, showEye=false} = opts;
   const safe = escapeHtml(ip);
-  const displaySafe = escapeHtml(hidden ? maskIp(ip) : ip);
+  const displayValue = hidden ? maskIp(ip) : ip;
+  const displaySafe = escapeHtml(displayValue);
+  const copySafe = escapeHtml(displayValue);
   const idsAttr = (ids||[]).join(',');
-  const copyBtn = ip ? `<button class="icon-btn copy-btn" data-copy="${safe}" title="copy IP">⧉</button>` : '';
+  const copyBtn = ip ? `<button class="icon-btn copy-btn" data-copy="${copySafe}" title="copy IP">⧉</button>` : '';
   const delBtn = (isAdmin() && ids && ids.length) ? `<button class="icon-btn del-btn" data-ids="${idsAttr}" data-ip="${safe}" title="delete this IP">🗑</button>` : '';
   const eyeBtn = (isAdmin() && showEye && ip) ? `<button class="icon-btn eye-btn" data-ip="${safe}" title="${hidden?'unhide':'hide'} this IP">${hidden?'🙈':'👁'}</button>` : '';
   return `<span class="ip-cell"><span class="ip">${displaySafe||'—'}</span>${copyBtn}${eyeBtn}${delBtn}</span>`;
