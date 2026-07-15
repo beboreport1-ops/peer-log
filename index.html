@@ -49,12 +49,29 @@
     font-weight:600;
   }
   h1 span{color:var(--accent);}
-  .sub{color:var(--dim);font-size:11px;letter-spacing:.05em;margin-top:4px;display:flex;align-items:center;gap:8px;}
+  .sub{color:var(--dim);font-size:11px;letter-spacing:.05em;margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .dot{width:6px;height:6px;border-radius:50%;background:var(--dim);display:inline-block;}
   .dot.synced{background:var(--accent);box-shadow:0 0 6px var(--accent);}
   .dot.syncing{background:var(--warn);animation:pulse 1s infinite;}
   .dot.err{background:var(--danger);}
   @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+  .role-tag{
+    font-size:9.5px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    padding:1px 7px;
+    border-radius:20px;
+    border:1px solid var(--line);
+    color:var(--dim);
+  }
+  .role-tag.admin{color:var(--warn);border-color:#5a4520;}
+  .logout-link{
+    background:none;border:none;color:var(--dim);
+    font-family:var(--mono);font-size:10.5px;
+    text-decoration:underline;cursor:pointer;letter-spacing:.03em;
+    padding:0;
+  }
+  .logout-link:hover{color:var(--accent);}
   .count{
     font-size:11px;
     color:var(--dim);
@@ -172,9 +189,26 @@
   tbody tr:last-child td{border-bottom:none;}
   tbody tr.main-row{cursor:pointer;}
   tbody tr.main-row:hover{background:#0d1a15;}
-  tbody tr.main-row:hover td:first-child{color:var(--accent);}
+  tbody tr.main-row:hover td:nth-child(2){color:var(--accent);}
 
   .ip{color:#8fb5a8;}
+  .label-input{
+    width:100%;
+    min-width:70px;
+    background:transparent;
+    border:1px solid transparent;
+    color:var(--text);
+    font-family:var(--mono);
+    font-size:12px;
+    padding:5px 7px;
+    border-radius:3px;
+    outline:none;
+  }
+  .label-input::placeholder{color:var(--line);}
+  .label-input:hover{border-color:var(--line);}
+  .label-input:focus{border-color:var(--accent-dim);background:var(--bg);}
+  .label-static{color:var(--dim);font-size:12px;padding:5px 7px;display:block;}
+
   .ip-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .icon-btn{
     background:none;
@@ -191,6 +225,7 @@
   .icon-btn:hover{opacity:1;color:var(--accent);background:rgba(57,255,157,0.08);}
   .icon-btn.copied{color:var(--accent);opacity:1;}
   .icon-btn.del-btn:hover{color:var(--danger);background:rgba(255,97,97,0.1);}
+  .icon-btn.eye-btn:hover{color:var(--warn);background:rgba(255,180,84,0.1);}
 
   .badge{
     display:inline-block;
@@ -277,7 +312,7 @@
     letter-spacing:.1em;
   }
 
-  /* ---- gate screens (password / hidden) ---- */
+  /* ---- gate screen ---- */
   .gate-screen{
     min-height:80vh;
     display:flex;
@@ -297,6 +332,26 @@
   }
   .gate-title span{color:var(--accent);}
   .gate-sub{color:var(--dim);font-size:11.5px;margin:0 0 18px;}
+  .gate-tabs{
+    display:flex;
+    border:1px solid var(--line);
+    border-radius:2px;
+    overflow:hidden;
+    margin-bottom:18px;
+  }
+  .gate-tab{
+    flex:1;
+    background:var(--panel);
+    border:none;
+    color:var(--dim);
+    padding:9px 0;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    cursor:pointer;
+  }
+  .gate-tab.active{color:var(--accent);background:#0d1a15;}
   .gate-input{
     width:100%;
     background:var(--panel);
@@ -310,15 +365,8 @@
     margin-bottom:10px;
   }
   .gate-input:focus{border-color:var(--accent-dim);}
-  .gate-error{color:var(--danger);font-size:11px;margin:0 0 10px;}
+  .gate-error{color:var(--danger);font-size:11px;margin:0 0 10px;min-height:14px;}
   .gate-submit{width:100%;}
-  .gate-dot{
-    width:10px;height:10px;border-radius:50%;
-    background:var(--line);
-    border:none;
-    cursor:pointer;
-  }
-  .gate-dot:hover{background:var(--accent-dim);}
 
   /* ---- modal ---- */
   .modal-overlay{
@@ -368,7 +416,8 @@
   .modal-actions{display:flex;gap:8px;justify-content:flex-end;}
 
   @media (max-width:520px){
-    thead th:nth-child(3), tbody td:nth-child(3){display:none;}
+    thead th:nth-child(4), tbody td:nth-child(4){display:none;}
+    .label-input{min-width:50px;font-size:11px;}
   }
 </style>
 </head>
@@ -381,22 +430,25 @@
   <header>
     <div>
       <h1>PEER<span>_</span>LOG</h1>
-      <div class="sub"><span class="dot" id="syncDot"></span><span id="syncLabel">connecting...</span></div>
+      <div class="sub">
+        <span class="dot" id="syncDot"></span><span id="syncLabel">connecting...</span>
+        <span class="role-tag" id="roleTag"></span>
+        <button class="logout-link" id="logoutBtn">log out</button>
+      </div>
     </div>
     <div class="count" id="count"><b>0</b>players loaded</div>
   </header>
 
-  <label class="dropzone" id="dropzone">
+  <label class="dropzone" id="dropzone" style="display:none;">
     <input type="file" id="fileInput" accept=".csv" multiple>
     <p class="main">Drop <span class="accent">.csv</span> file(s) here, or click to browse</p>
-    <p>expects columns: username, ip, location — synced to the cloud, so it's here next time on any device</p>
+    <p>expects columns: PSN ID (username/player), IP, location — synced to the cloud, so it's here next time on any device</p>
   </label>
 
   <div class="toolbar" id="toolbar" style="display:none;">
-    <input class="search" id="search" placeholder="filter by username, ip, or location...">
+    <input class="search" id="search" placeholder="filter by PSN ID, ip, or location...">
     <button class="btn primary" id="exportBtn">Export filtered CSV</button>
-    <button class="btn" id="changePassBtn">Change Password</button>
-    <button class="btn danger" id="hideBtn">Hide</button>
+    <button class="btn" id="changePassBtn" style="display:none;">Change Password</button>
   </div>
 
   <div id="mainHolder"></div>
@@ -413,15 +465,17 @@
 const SUPABASE_URL = 'https://kimgthhwggzudpdediga.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_3vpCzgVNaI1LDQstLz9_dw_Lv8jCRnf';
 
-let rawRows = [];       // {username, ip, location, idx}
-let users = [];         // grouped by username
-let unlabeled = [];     // rows with no username
+let rawRows = [];
+let users = [];
+let unlabeled = [];
 let sortKey = 'username';
 let sortDir = 1;
 let expanded = new Set();
+let labels = new Map();    // username_key -> {label, hidden}
+let ipHidden = new Map();  // ip -> boolean
 let passwordHash = null;
 let keyHash = null;
-let masked = false;
+let role = null;           // 'view' | 'admin'
 
 const appEl = document.getElementById('app');
 const gateScreenEl = document.getElementById('gateScreen');
@@ -434,7 +488,8 @@ const unlabeledHolder = document.getElementById('unlabeledHolder');
 const countEl = document.getElementById('count');
 const exportBtn = document.getElementById('exportBtn');
 const changePassBtn = document.getElementById('changePassBtn');
-const hideBtn = document.getElementById('hideBtn');
+const roleTag = document.getElementById('roleTag');
+const logoutBtn = document.getElementById('logoutBtn');
 const toast = document.getElementById('toast');
 const syncDot = document.getElementById('syncDot');
 const syncLabel = document.getElementById('syncLabel');
@@ -443,6 +498,7 @@ function setSyncStatus(state, msg){
   syncDot.className = 'dot ' + state;
   syncLabel.textContent = msg;
 }
+function isAdmin(){ return role === 'admin'; }
 
 // ---------- hashing ----------
 async function sha256Hex(str){
@@ -477,6 +533,18 @@ const insertRows = (rows) => sbFetch('peer_rows', {
   body: JSON.stringify(rows)
 });
 const deleteRowsByIds = (ids) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`, {method:'DELETE'});
+const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden');
+const saveLabelRemote = (usernameKey, label, hidden) => sbFetch('peer_labels?on_conflict=username_key', {
+  method:'POST',
+  headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+  body: JSON.stringify([{username_key: usernameKey, label, hidden}])
+});
+const loadIpHidden = () => sbFetch('peer_ip_hidden?select=ip,hidden');
+const saveIpHiddenRemote = (ip, hidden) => sbFetch('peer_ip_hidden?on_conflict=ip', {
+  method:'POST',
+  headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+  body: JSON.stringify([{ip, hidden}])
+});
 const patchAuth = (fields) => sbFetch('peer_log_auth?id=eq.1', {
   method:'PATCH',
   headers:{'Prefer':'return=minimal'},
@@ -484,7 +552,7 @@ const patchAuth = (fields) => sbFetch('peer_log_auth?id=eq.1', {
 });
 
 // ---------- generic modal ----------
-function openModal({title, fields, submitLabel='Confirm', danger=false, onSubmit}){
+function openModal({title, fields=[], submitLabel='Confirm', danger=false, onSubmit}){
   return new Promise((resolve)=>{
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -538,8 +606,23 @@ function openModal({title, fields, submitLabel='Confirm', danger=false, onSubmit
     inputs.forEach(inp => inp.addEventListener('keydown', e=>{ if(e.key==='Enter') doSubmit(); }));
   });
 }
+// Admin actions are already gated by the key at login, so admin-only prompts
+// are plain confirmations — no repeated credential entry.
+function confirmModal({title, submitLabel='Confirm', danger=true, onConfirm}){
+  return openModal({
+    title, fields:[], submitLabel, danger,
+    onSubmit: async () => {
+      try{
+        await onConfirm();
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message: e.message || 'Action failed — check connection'};
+      }
+    }
+  });
+}
 
-// ---------- auth gates ----------
+// ---------- init / auth ----------
 async function init(){
   setSyncStatus('syncing', 'connecting...');
   try{
@@ -548,7 +631,6 @@ async function init(){
     if(!row) throw new Error('auth not configured');
     passwordHash = row.password_hash;
     keyHash = row.key_hash;
-    masked = !!row.hidden;
   }catch(e){
     console.error(e);
     gateScreenEl.innerHTML = `<div class="gate-screen"><div class="gate-box"><p class="gate-error" style="display:block;">Couldn't reach the log. Check your connection and reload the page.</p></div></div>`;
@@ -556,94 +638,92 @@ async function init(){
     return;
   }
 
-  if(sessionStorage.getItem('peerlog_unlocked') === '1'){
+  const savedRole = sessionStorage.getItem('peerlog_role');
+  if(savedRole === 'view' || savedRole === 'admin'){
+    role = savedRole;
     showApp();
   } else {
-    showPasswordGate();
+    showGate();
   }
   setSyncStatus('synced', 'synced');
 }
 
-function showPasswordGate(){
+function showGate(){
   appEl.style.display = 'none';
-  gateScreenEl.innerHTML = `
-    <div class="gate-screen">
-      <div class="gate-box">
-        <h1 class="gate-title">PEER<span>_</span>LOG</h1>
-        <p class="gate-sub">Enter password to view</p>
-        <input class="gate-input" id="gatePass" type="password" placeholder="password" autocomplete="off">
-        <p class="gate-error" id="gateError"></p>
-        <button class="btn primary gate-submit" id="gateSubmit">Unlock</button>
-      </div>
-    </div>`;
-  const input = document.getElementById('gatePass');
-  const err = document.getElementById('gateError');
-  const submit = document.getElementById('gateSubmit');
-  setTimeout(()=>input.focus(), 30);
+  let tab = 'view';
 
-  async function tryUnlock(){
-    submit.disabled = true;
-    const hash = await sha256Hex(input.value);
-    if(hash === passwordHash){
-      sessionStorage.setItem('peerlog_unlocked', '1');
-      gateScreenEl.innerHTML = '';
-      showApp();
-    } else {
-      err.textContent = 'Incorrect password';
-      err.style.display = 'block';
-      submit.disabled = false;
+  function draw(){
+    gateScreenEl.innerHTML = `
+      <div class="gate-screen">
+        <div class="gate-box">
+          <h1 class="gate-title">PEER<span>_</span>LOG</h1>
+          <p class="gate-sub">${tab==='view' ? 'Enter password to view the log' : 'Enter key for admin access'}</p>
+          <div class="gate-tabs">
+            <button class="gate-tab ${tab==='view'?'active':''}" data-tab="view">Viewer</button>
+            <button class="gate-tab ${tab==='admin'?'active':''}" data-tab="admin">Admin</button>
+          </div>
+          <input class="gate-input" id="gateInput" type="password" placeholder="${tab==='view'?'password':'key'}" autocomplete="off">
+          <p class="gate-error" id="gateError"></p>
+          <button class="btn primary gate-submit" id="gateSubmit">${tab==='view'?'Unlock':'Log in as admin'}</button>
+        </div>
+      </div>`;
+
+    gateScreenEl.querySelectorAll('.gate-tab').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        tab = btn.dataset.tab;
+        draw();
+      });
+    });
+
+    const input = document.getElementById('gateInput');
+    const err = document.getElementById('gateError');
+    const submit = document.getElementById('gateSubmit');
+    setTimeout(()=>input.focus(), 30);
+
+    async function tryLogin(){
+      submit.disabled = true;
+      const hash = await sha256Hex(input.value);
+      const expected = tab === 'view' ? passwordHash : keyHash;
+      if(hash === expected){
+        role = tab;
+        sessionStorage.setItem('peerlog_role', role);
+        gateScreenEl.innerHTML = '';
+        showApp();
+      } else {
+        err.textContent = tab==='view' ? 'Incorrect password' : 'Incorrect key';
+        submit.disabled = false;
+      }
     }
+    submit.addEventListener('click', tryLogin);
+    input.addEventListener('keydown', e => { if(e.key==='Enter') tryLogin(); });
   }
-  submit.addEventListener('click', tryUnlock);
-  input.addEventListener('keydown', e => { if(e.key==='Enter') tryUnlock(); });
+  draw();
 }
 
 function showApp(){
   gateScreenEl.innerHTML = '';
   appEl.style.display = 'block';
-  updateHideBtnLabel();
+  roleTag.textContent = isAdmin() ? 'admin' : 'viewer';
+  roleTag.className = 'role-tag' + (isAdmin() ? ' admin' : '');
+  dropzone.style.display = isAdmin() ? 'block' : 'none';
+  changePassBtn.style.display = isAdmin() ? 'inline-block' : 'none';
   refreshFromCloud();
 }
 
-function updateHideBtnLabel(){
-  hideBtn.textContent = masked ? 'Unhide' : 'Hide';
-}
-
-async function toggleMask(){
-  const goingToMask = !masked;
-  await openModal({
-    title: goingToMask ? 'Hide usernames & IPs' : 'Reveal usernames & IPs',
-    fields: [{id:'key', label:'Key', type:'password'}],
-    submitLabel: goingToMask ? 'Hide' : 'Reveal',
-    danger: goingToMask,
-    onSubmit: async (vals) => {
-      const h = await sha256Hex(vals.key);
-      if(h !== keyHash) return {ok:false, message:'Incorrect key'};
-      try{
-        await patchAuth({hidden:goingToMask});
-        masked = goingToMask;
-        updateHideBtnLabel();
-        render();
-        return {ok:true};
-      }catch(e){
-        return {ok:false, message:'Update failed — check connection'};
-      }
-    }
-  });
-}
+logoutBtn.addEventListener('click', ()=>{
+  sessionStorage.removeItem('peerlog_role');
+  location.reload();
+});
 
 async function openChangePassword(){
   await openModal({
-    title: 'Change password',
+    title: 'Change viewer password',
     fields: [
-      {id:'key', label:'Key', type:'password'},
       {id:'newpass', label:'New password', type:'password'},
       {id:'confirm', label:'Confirm new password', type:'password'}
     ],
     submitLabel: 'Save',
     onSubmit: async (vals) => {
-      const h = await sha256Hex(vals.key);
-      if(h !== keyHash) return {ok:false, message:'Incorrect key'};
       if(!vals.newpass) return {ok:false, message:'Enter a new password'};
       if(vals.newpass !== vals.confirm) return {ok:false, message:"Passwords don't match"};
       try{
@@ -660,23 +740,47 @@ async function openChangePassword(){
 }
 
 async function promptDeleteIp(ids, ip){
-  if(!ids || !ids.length) return;
-  await openModal({
-    title: `Delete ${ip || 'this IP'}?`,
-    fields: [{id:'key', label:'Enter key to confirm', type:'password'}],
+  if(!isAdmin() || !ids || !ids.length) return;
+  await confirmModal({
+    title: `Delete ${ip || 'this IP'}? This can't be undone.`,
     submitLabel: 'Delete',
     danger: true,
-    onSubmit: async (vals) => {
-      const h = await sha256Hex(vals.key);
-      if(h !== keyHash) return {ok:false, message:'Incorrect key'};
-      try{
-        await deleteRowsByIds(ids);
-        await refreshFromCloud();
-        showToast(`deleted ${ip}`);
-        return {ok:true};
-      }catch(e){
-        return {ok:false, message:'Delete failed — check connection'};
-      }
+    onConfirm: async () => {
+      await deleteRowsByIds(ids);
+      await refreshFromCloud();
+      showToast(`deleted ${ip}`);
+    }
+  });
+}
+
+async function promptToggleIpHidden(ip){
+  if(!isAdmin()) return;
+  const current = ipHidden.get(ip) || false;
+  const goingToHide = !current;
+  await confirmModal({
+    title: goingToHide ? `Hide ${ip}?` : `Unhide ${ip}?`,
+    submitLabel: goingToHide ? 'Hide' : 'Unhide',
+    danger: goingToHide,
+    onConfirm: async () => {
+      await saveIpHiddenRemote(ip, goingToHide);
+      ipHidden.set(ip, goingToHide);
+      render();
+    }
+  });
+}
+
+async function promptToggleUsernameHidden(key, displayName){
+  if(!isAdmin()) return;
+  const current = labels.get(key) || {label:'', hidden:false};
+  const goingToHide = !current.hidden;
+  await confirmModal({
+    title: goingToHide ? `Hide ${displayName}?` : `Unhide ${displayName}?`,
+    submitLabel: goingToHide ? 'Hide' : 'Unhide',
+    danger: goingToHide,
+    onConfirm: async () => {
+      await saveLabelRemote(key, current.label, goingToHide);
+      labels.set(key, {label:current.label, hidden:goingToHide});
+      render();
     }
   });
 }
@@ -685,8 +789,10 @@ async function promptDeleteIp(ids, ip){
 async function refreshFromCloud(){
   setSyncStatus('syncing', 'syncing...');
   try{
-    const data = await loadAllRows();
+    const [data, labelData, ipHiddenData] = await Promise.all([loadAllRows(), loadLabels(), loadIpHidden()]);
     rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id}));
+    labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden}]));
+    ipHidden = new Map((ipHiddenData||[]).map(r => [r.ip, !!r.hidden]));
     buildGroups();
     toolbar.style.display = 'flex';
     render();
@@ -709,6 +815,7 @@ fileInput.addEventListener('change', e => {
   dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); });
 });
 dropzone.addEventListener('drop', e=>{
+  if(!isAdmin()) return;
   if(e.dataTransfer.files.length) handleFiles([...e.dataTransfer.files]);
 });
 
@@ -746,6 +853,7 @@ function parseFile(file){
 }
 
 async function handleFiles(files){
+  if(!isAdmin()) return;
   setSyncStatus('syncing', 'uploading...');
   const results = await Promise.all(files.map(parseFile));
   const allNewRows = results.flat();
@@ -764,9 +872,6 @@ async function handleFiles(files){
   }
 }
 
-// rawRows.idx = database id, increasing in insertion order across all devices.
-// For each username+ip pair we track every underlying row id (for deletion)
-// and treat the highest idx as the most recent sighting.
 function buildGroups(){
   const map = new Map();
   const unlabeledMap = new Map();
@@ -855,20 +960,37 @@ function maskUsername(name){
 function maskIp(ip){
   if(!ip) return ip;
   const parts = ip.split('.');
-  if(parts.length === 4) return parts[0] + '.***.***.***';
-  return ip.slice(0,3) + '***';
+  if(parts.length === 4){
+    return parts.map((p, i) => i===0 ? p : '*'.repeat(p.length)).join('.');
+  }
+  return '*'.repeat(ip.length);
+}
+
+async function saveLabel(key, value){
+  const current = labels.get(key) || {label:'', hidden:false};
+  labels.set(key, {label:value, hidden:current.hidden});
+  try{
+    await saveLabelRemote(key, value, current.hidden);
+  }catch(e){
+    console.error(e);
+    showToast('label save failed — check connection', true);
+  }
 }
 
 function ipCell(ip, ids){
   const safe = escapeHtml(ip);
-  const displaySafe = escapeHtml(masked ? maskIp(ip) : ip);
+  const isHidden = ipHidden.get(ip) || false;
+  const displaySafe = escapeHtml(isHidden ? maskIp(ip) : ip);
   const idsAttr = (ids||[]).join(',');
-  const delBtn = (ids && ids.length) ? `<button class="icon-btn del-btn" data-ids="${idsAttr}" data-ip="${safe}" title="delete this IP (requires key)">🗑</button>` : '';
-  return `<span class="ip-cell"><span class="ip">${displaySafe||'—'}</span>${ip?`<button class="icon-btn copy-btn" data-copy="${safe}" title="copy IP">⧉</button>`:''}${delBtn}</span>`;
+  const copyBtn = ip ? `<button class="icon-btn copy-btn" data-copy="${safe}" title="copy IP">⧉</button>` : '';
+  const delBtn = (isAdmin() && ids && ids.length) ? `<button class="icon-btn del-btn" data-ids="${idsAttr}" data-ip="${safe}" title="delete this IP">🗑</button>` : '';
+  const eyeBtn = (isAdmin() && ip) ? `<button class="icon-btn eye-btn" data-ip="${safe}" title="${isHidden?'unhide':'hide'} this IP">${isHidden?'🙈':'👁'}</button>` : '';
+  return `<span class="ip-cell"><span class="ip">${displaySafe||'—'}</span>${copyBtn}${eyeBtn}${delBtn}</span>`;
 }
 
 function render(){
   const q = search.value.trim().toLowerCase();
+  const admin = isAdmin();
 
   let list = users.filter(u => matchesQuery(u, q));
   list.sort((a,b)=>{
@@ -900,9 +1022,19 @@ function render(){
       const key = u.username.toLowerCase();
       const isExpanded = expanded.has(key);
       const multi = u.history.length > 1;
+      const labelInfo = labels.get(key) || {label:'', hidden:false};
+      const nameHidden = labelInfo.hidden;
+      const displayName = escapeHtml(nameHidden ? maskUsername(u.username) : u.username);
+      const labelCell = admin
+        ? `<input class="label-input" data-key="${escapeHtml(key)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
+        : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
+      const nameEye = admin
+        ? `<button class="icon-btn eye-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="${nameHidden?'unhide':'hide'} this PSN ID">${nameHidden?'🙈':'👁'}</button>`
+        : '';
       rowsHtml += `
         <tr class="main-row ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
-          <td><span class="caret">${multi?'▸':''}</span>${escapeHtml(masked ? maskUsername(u.username) : u.username)}</td>
+          <td>${labelCell}</td>
+          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameEye}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids)}</td>
           <td>${escapeHtml(u.latestLocation)||'—'}
             ${multi?`<span class="badge" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
@@ -912,6 +1044,7 @@ function render(){
         u.history.forEach((h, i) => {
           rowsHtml += `
             <tr class="hist-row ${i===0?'newest':''}">
+              <td></td>
               <td></td>
               <td>${ipCell(h.ip, h.ids)}</td>
               <td>${escapeHtml(h.location)||'—'}${i===0?'<span class="hist-tag">latest</span>':''}</td>
@@ -923,7 +1056,8 @@ function render(){
     mainHolder.innerHTML = `
       <table>
         <thead><tr>
-          ${th('username','Username')}
+          <th>Label</th>
+          ${th('username','PSN ID')}
           ${th('ip','Latest IP')}
           ${th('location','Latest Location')}
         </tr></thead>
@@ -934,6 +1068,7 @@ function render(){
     mainHolder.querySelectorAll('thead th').forEach(th=>{
       th.addEventListener('click', ()=>{
         const key = th.dataset.key;
+        if(!key) return;
         if(sortKey === key) sortDir *= -1;
         else { sortKey = key; sortDir = 1; }
         render();
@@ -942,7 +1077,7 @@ function render(){
 
     mainHolder.querySelectorAll('.main-row').forEach(tr=>{
       tr.addEventListener('click', (e)=>{
-        if(e.target.closest('.badge') || e.target.closest('.icon-btn')) return;
+        if(e.target.closest('.badge') || e.target.closest('.icon-btn') || e.target.closest('.label-input')) return;
         const key = tr.dataset.key;
         if(expanded.has(key)) expanded.delete(key);
         else expanded.add(key);
@@ -969,8 +1104,8 @@ function render(){
   } else {
     unlabeledHolder.innerHTML = `
       <section class="block">
-        <p class="block-title"><span class="warn">⚠</span> No Username <span class="n">(${filteredUnlabeled.length})</span></p>
-        <p class="unlabeled-note">These entries had no player name in the log — usually a peer that disconnected before OctoSniff could resolve one. Can't be merged into a player's history, shown separately.</p>
+        <p class="block-title"><span class="warn">⚠</span> No PSN ID <span class="n">(${filteredUnlabeled.length})</span></p>
+        <p class="unlabeled-note">These entries had no PSN ID in the log — usually a peer that disconnected before OctoSniff could resolve one. Can't be merged into a player's history, shown separately.</p>
         <table>
           <thead><tr><th>IP Address</th><th>Location</th><th>Times Seen</th></tr></thead>
           <tbody>
@@ -987,19 +1122,46 @@ function render(){
     `;
   }
 
+  if(admin){
+    document.querySelectorAll('.label-input').forEach(inp=>{
+      inp.addEventListener('click', e => e.stopPropagation());
+      let lastSaved = inp.value;
+      inp.addEventListener('keydown', e=>{ if(e.key === 'Enter') inp.blur(); });
+      inp.addEventListener('blur', ()=>{
+        const val = inp.value.trim();
+        if(val !== lastSaved){
+          lastSaved = val;
+          saveLabel(inp.dataset.key, val);
+        }
+      });
+    });
+  }
+
   document.querySelectorAll('.copy-btn').forEach(btn=>{
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       copyToClipboard(btn.dataset.copy, btn);
     });
   });
-  document.querySelectorAll('.del-btn').forEach(btn=>{
-    btn.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      const ids = btn.dataset.ids.split(',').filter(Boolean).map(Number);
-      promptDeleteIp(ids, btn.dataset.ip);
+  if(admin){
+    document.querySelectorAll('.del-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const ids = btn.dataset.ids.split(',').filter(Boolean).map(Number);
+        promptDeleteIp(ids, btn.dataset.ip);
+      });
     });
-  });
+    document.querySelectorAll('.eye-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        if(btn.dataset.unameKey !== undefined){
+          promptToggleUsernameHidden(btn.dataset.unameKey, btn.dataset.unameDisplay);
+        } else if(btn.dataset.ip !== undefined){
+          promptToggleIpHidden(btn.dataset.ip);
+        }
+      });
+    });
+  }
 }
 
 function csvEscape(v){
@@ -1020,12 +1182,13 @@ function exportFilteredCSV(){
     return;
   }
 
-  const lines = [['Username','IP','Location','IP History Count'].map(csvEscape).join(',')];
+  const lines = [['Label','PSN ID','IP','Location','IP History Count'].map(csvEscape).join(',')];
   list.forEach(u=>{
-    lines.push([u.username, u.latestIp, u.latestLocation, u.history.length].map(csvEscape).join(','));
+    const labelVal = (labels.get(u.username.toLowerCase()) || {}).label || '';
+    lines.push([labelVal, u.username, u.latestIp, u.latestLocation, u.history.length].map(csvEscape).join(','));
   });
   filteredUnlabeled.forEach(u=>{
-    lines.push(['', u.ip, u.location, u.count].map(csvEscape).join(','));
+    lines.push(['', '', u.ip, u.location, u.count].map(csvEscape).join(','));
   });
 
   const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
@@ -1048,7 +1211,6 @@ function escapeHtml(s){
 search.addEventListener('input', render);
 exportBtn.addEventListener('click', exportFilteredCSV);
 changePassBtn.addEventListener('click', openChangePassword);
-hideBtn.addEventListener('click', toggleMask);
 
 init();
 </script>
