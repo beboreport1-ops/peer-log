@@ -297,7 +297,6 @@
   <div class="toolbar" id="toolbar" style="display:none;">
     <input class="search" id="search" placeholder="filter by username, ip, or location...">
     <button class="btn primary" id="exportBtn">Export filtered CSV</button>
-    <button class="btn danger" id="clearBtn">Clear synced log</button>
   </div>
 
   <div id="mainHolder"></div>
@@ -328,7 +327,6 @@ const search = document.getElementById('search');
 const mainHolder = document.getElementById('mainHolder');
 const unlabeledHolder = document.getElementById('unlabeledHolder');
 const countEl = document.getElementById('count');
-const clearBtn = document.getElementById('clearBtn');
 const exportBtn = document.getElementById('exportBtn');
 const toast = document.getElementById('toast');
 const syncDot = document.getElementById('syncDot');
@@ -711,25 +709,6 @@ function escapeHtml(s){
 
 search.addEventListener('input', render);
 exportBtn.addEventListener('click', exportFilteredCSV);
-clearBtn.addEventListener('click', async ()=>{
-  if(!confirm('This permanently deletes the synced log for every device. Continue?')) return;
-  setSyncStatus('syncing', 'clearing...');
-  try{
-    await deleteAllRows();
-    rawRows = []; users = []; unlabeled = []; expanded.clear();
-    sortKey = 'username'; sortDir = 1;
-    search.value = '';
-    countEl.innerHTML = '<b>0</b>players loaded';
-    mainHolder.innerHTML = '';
-    unlabeledHolder.innerHTML = '';
-    setSyncStatus('synced', 'synced');
-    showToast('log cleared');
-  }catch(e){
-    console.error(e);
-    setSyncStatus('err', 'clear failed — check connection');
-    showToast('clear failed — check connection', true);
-  }
-});
 </script>
 </body>
 </html>
