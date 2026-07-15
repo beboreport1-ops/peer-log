@@ -774,7 +774,7 @@ async function promptToggleUsernameHidden(key, displayName){
   const current = labels.get(key) || {label:'', hidden:false};
   const goingToHide = !current.hidden;
   await confirmModal({
-    title: goingToHide ? `Hide ${displayName}?` : `Unhide ${displayName}?`,
+    title: goingToHide ? `Hide ${displayName}? (PSN ID + all their IPs)` : `Unhide ${displayName}?`,
     submitLabel: goingToHide ? 'Hide' : 'Unhide',
     danger: goingToHide,
     onConfirm: async () => {
@@ -977,14 +977,14 @@ async function saveLabel(key, value){
   }
 }
 
-function ipCell(ip, ids){
+function ipCell(ip, ids, opts={}){
+  const {hidden=false, showEye=false} = opts;
   const safe = escapeHtml(ip);
-  const isHidden = ipHidden.get(ip) || false;
-  const displaySafe = escapeHtml(isHidden ? maskIp(ip) : ip);
+  const displaySafe = escapeHtml(hidden ? maskIp(ip) : ip);
   const idsAttr = (ids||[]).join(',');
   const copyBtn = ip ? `<button class="icon-btn copy-btn" data-copy="${safe}" title="copy IP">⧉</button>` : '';
   const delBtn = (isAdmin() && ids && ids.length) ? `<button class="icon-btn del-btn" data-ids="${idsAttr}" data-ip="${safe}" title="delete this IP">🗑</button>` : '';
-  const eyeBtn = (isAdmin() && ip) ? `<button class="icon-btn eye-btn" data-ip="${safe}" title="${isHidden?'unhide':'hide'} this IP">${isHidden?'🙈':'👁'}</button>` : '';
+  const eyeBtn = (isAdmin() && showEye && ip) ? `<button class="icon-btn eye-btn" data-ip="${safe}" title="${hidden?'unhide':'hide'} this IP">${hidden?'🙈':'👁'}</button>` : '';
   return `<span class="ip-cell"><span class="ip">${displaySafe||'—'}</span>${copyBtn}${eyeBtn}${delBtn}</span>`;
 }
 
@@ -1029,13 +1029,13 @@ function render(){
         ? `<input class="label-input" data-key="${escapeHtml(key)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
         : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
       const nameEye = admin
-        ? `<button class="icon-btn eye-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="${nameHidden?'unhide':'hide'} this PSN ID">${nameHidden?'🙈':'👁'}</button>`
+        ? `<button class="icon-btn eye-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="${nameHidden?'unhide':'hide'} this row (PSN ID + IPs)">${nameHidden?'🙈':'👁'}</button>`
         : '';
       rowsHtml += `
         <tr class="main-row ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td>${labelCell}</td>
           <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameEye}</td>
-          <td>${ipCell(u.latestIp, u.history[0].ids)}</td>
+          <td>${ipCell(u.latestIp, u.history[0].ids, {hidden:nameHidden, showEye:false})}</td>
           <td>${escapeHtml(u.latestLocation)||'—'}
             ${multi?`<span class="badge" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
           </td>
@@ -1046,7 +1046,7 @@ function render(){
             <tr class="hist-row ${i===0?'newest':''}">
               <td></td>
               <td></td>
-              <td>${ipCell(h.ip, h.ids)}</td>
+              <td>${ipCell(h.ip, h.ids, {hidden:nameHidden, showEye:false})}</td>
               <td>${escapeHtml(h.location)||'—'}${i===0?'<span class="hist-tag">latest</span>':''}</td>
             </tr>`;
         });
@@ -1111,7 +1111,7 @@ function render(){
           <tbody>
             ${filteredUnlabeled.map(u=>`
               <tr>
-                <td>${ipCell(u.ip, u.ids)}</td>
+                <td>${ipCell(u.ip, u.ids, {hidden: ipHidden.get(u.ip)||false, showEye:true})}</td>
                 <td>${escapeHtml(u.location)||'—'}</td>
                 <td>${u.count}</td>
               </tr>
