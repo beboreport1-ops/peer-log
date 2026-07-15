@@ -421,6 +421,7 @@ let sortDir = 1;
 let expanded = new Set();
 let passwordHash = null;
 let keyHash = null;
+let masked = false;
 
 const appEl = document.getElementById('app');
 const gateScreenEl = document.getElementById('gateScreen');
@@ -547,11 +548,7 @@ async function init(){
     if(!row) throw new Error('auth not configured');
     passwordHash = row.password_hash;
     keyHash = row.key_hash;
-    if(row.hidden){
-      showHiddenGate();
-      setSyncStatus('synced', 'synced');
-      return;
-    }
+    masked = !!row.hidden;
   }catch(e){
     console.error(e);
     gateScreenEl.innerHTML = `<div class="gate-screen"><div class="gate-box"><p class="gate-error" style="display:block;">Couldn't reach the log. Check your connection and reload the page.</p></div></div>`;
@@ -565,12 +562,6 @@ async function init(){
     showPasswordGate();
   }
   setSyncStatus('synced', 'synced');
-}
-
-function showHiddenGate(){
-  appEl.style.display = 'none';
-  gateScreenEl.innerHTML = `<div class="gate-screen"><button class="gate-dot" id="unhideBtn" title=""></button></div>`;
-  document.getElementById('unhideBtn').addEventListener('click', openUnhide);
 }
 
 function showPasswordGate(){
@@ -610,41 +601,29 @@ function showPasswordGate(){
 function showApp(){
   gateScreenEl.innerHTML = '';
   appEl.style.display = 'block';
+  updateHideBtnLabel();
   refreshFromCloud();
 }
 
-async function openUnhide(){
-  await openModal({
-    title: 'Enter key to unhide',
-    fields: [{id:'key', label:'Key', type:'password'}],
-    submitLabel: 'Unhide',
-    onSubmit: async (vals) => {
-      const h = await sha256Hex(vals.key);
-      if(h !== keyHash) return {ok:false, message:'Incorrect key'};
-      try{
-        await patchAuth({hidden:false});
-        if(sessionStorage.getItem('peerlog_unlocked') === '1') showApp();
-        else showPasswordGate();
-        return {ok:true};
-      }catch(e){
-        return {ok:false, message:'Update failed — check connection'};
-      }
-    }
-  });
+function updateHideBtnLabel(){
+  hideBtn.textContent = masked ? 'Unhide' : 'Hide';
 }
 
-async function openHide(){
+async function toggleMask(){
+  const goingToMask = !masked;
   await openModal({
-    title: 'Hide the log',
+    title: goingToMask ? 'Hide usernames & IPs' : 'Reveal usernames & IPs',
     fields: [{id:'key', label:'Key', type:'password'}],
-    submitLabel: 'Hide',
-    danger: true,
+    submitLabel: goingToMask ? 'Hide' : 'Reveal',
+    danger: goingToMask,
     onSubmit: async (vals) => {
       const h = await sha256Hex(vals.key);
       if(h !== keyHash) return {ok:false, message:'Incorrect key'};
       try{
-        await patchAuth({hidden:true});
-        showHiddenGate();
+        await patchAuth({hidden:goingToMask});
+        masked = goingToMask;
+        updateHideBtnLabel();
+        render();
         return {ok:true};
       }catch(e){
         return {ok:false, message:'Update failed — check connection'};
@@ -869,11 +848,23 @@ function showToast(msg, isErr){
   toastTimer = setTimeout(()=>toast.classList.remove('show'), 1800);
 }
 
+function maskUsername(name){
+  if(!name) return name;
+  return name.slice(0,2) + '••••';
+}
+function maskIp(ip){
+  if(!ip) return ip;
+  const parts = ip.split('.');
+  if(parts.length === 4) return parts[0] + '.***.***.***';
+  return ip.slice(0,3) + '***';
+}
+
 function ipCell(ip, ids){
   const safe = escapeHtml(ip);
+  const displaySafe = escapeHtml(masked ? maskIp(ip) : ip);
   const idsAttr = (ids||[]).join(',');
   const delBtn = (ids && ids.length) ? `<button class="icon-btn del-btn" data-ids="${idsAttr}" data-ip="${safe}" title="delete this IP (requires key)">🗑</button>` : '';
-  return `<span class="ip-cell"><span class="ip">${safe||'—'}</span>${ip?`<button class="icon-btn copy-btn" data-copy="${safe}" title="copy IP">⧉</button>`:''}${delBtn}</span>`;
+  return `<span class="ip-cell"><span class="ip">${displaySafe||'—'}</span>${ip?`<button class="icon-btn copy-btn" data-copy="${safe}" title="copy IP">⧉</button>`:''}${delBtn}</span>`;
 }
 
 function render(){
@@ -911,7 +902,7 @@ function render(){
       const multi = u.history.length > 1;
       rowsHtml += `
         <tr class="main-row ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
-          <td><span class="caret">${multi?'▸':''}</span>${escapeHtml(u.username)}</td>
+          <td><span class="caret">${multi?'▸':''}</span>${escapeHtml(masked ? maskUsername(u.username) : u.username)}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids)}</td>
           <td>${escapeHtml(u.latestLocation)||'—'}
             ${multi?`<span class="badge" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
@@ -1057,7 +1048,7 @@ function escapeHtml(s){
 search.addEventListener('input', render);
 exportBtn.addEventListener('click', exportFilteredCSV);
 changePassBtn.addEventListener('click', openChangePassword);
-hideBtn.addEventListener('click', openHide);
+hideBtn.addEventListener('click', toggleMask);
 
 init();
 </script>
