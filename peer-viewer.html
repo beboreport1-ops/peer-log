@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Peer Log Viewer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0e0d;
+    --panel:#0f1614;
+    --line:#1c2b27;
+    --text:#d7e5df;
+    --dim:#6d8079;
+    --accent:#39ff9d;
+    --accent-dim:#1f8a5c;
+    --warn:#ffb454;
+    --mono: 'JetBrains Mono','Consolas',monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(180deg, rgba(57,255,157,0.03), transparent 200px),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--mono);
+    min-height:100vh;
+    padding:32px 20px 60px;
+  }
+  .wrap{max-width:1000px;margin:0 auto;}
+
+  header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    border-bottom:1px solid var(--line);
+    padding-bottom:16px;
+    margin-bottom:24px;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+  h1{
+    font-size:15px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    margin:0;
+    color:var(--text);
+    font-weight:600;
+  }
+  h1 span{color:var(--accent);}
+  .sub{color:var(--dim);font-size:11px;letter-spacing:.05em;margin-top:4px;display:flex;align-items:center;gap:8px;}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--dim);display:inline-block;}
+  .dot.synced{background:var(--accent);box-shadow:0 0 6px var(--accent);}
+  .dot.syncing{background:var(--warn);animation:pulse 1s infinite;}
+  .dot.err{background:#ff6161;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+  .count{
+    font-size:11px;
+    color:var(--dim);
+    letter-spacing:.05em;
+    text-align:right;
+  }
+  .count b{color:var(--accent);font-size:15px;display:block;font-weight:600;}
+
+  .dropzone{
+    border:1px dashed var(--line);
+    background:var(--panel);
+    border-radius:2px;
+    padding:28px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+    margin-bottom:20px;
+    display:block;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color:var(--accent-dim);
+    background:#0d1a15;
+  }
+  .dropzone p{margin:0;color:var(--dim);font-size:12px;letter-spacing:.03em;}
+  .dropzone p.main{color:var(--text);font-size:13px;margin-bottom:6px;}
+  .dropzone .accent{color:var(--accent);}
+  input[type=file]{display:none;}
+
+  .toolbar{
+    display:flex;
+    gap:10px;
+    margin-bottom:14px;
+    flex-wrap:wrap;
+  }
+  .search{
+    flex:1;
+    min-width:180px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:9px 12px;
+    font-family:var(--mono);
+    font-size:12px;
+    border-radius:2px;
+    outline:none;
+  }
+  .search:focus{border-color:var(--accent-dim);}
+  .search::placeholder{color:var(--dim);}
+
+  .btn{
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--dim);
+    padding:9px 14px;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    border-radius:2px;
+    cursor:pointer;
+    transition:.15s;
+    white-space:nowrap;
+  }
+  .btn:hover{border-color:var(--accent-dim);color:var(--accent);}
+  .btn.primary{color:var(--accent);border-color:var(--accent-dim);}
+  .btn.primary:hover{background:rgba(57,255,157,0.08);}
+  .btn.danger:hover{border-color:#ff6161;color:#ff6161;}
+
+  section.block{margin-bottom:28px;}
+  .block-title{
+    font-size:11px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--dim);
+    margin:0 0 8px 2px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .block-title .n{color:var(--accent);}
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:2px;
+    overflow:hidden;
+    font-size:12.5px;
+  }
+  thead th{
+    text-align:left;
+    padding:10px 14px;
+    color:var(--dim);
+    font-weight:600;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    font-size:10.5px;
+    border-bottom:1px solid var(--line);
+    cursor:pointer;
+    user-select:none;
+    white-space:nowrap;
+  }
+  thead th:hover{color:var(--accent);}
+  thead th.sorted{color:var(--accent);}
+  thead th .arrow{opacity:.6;margin-left:4px;font-size:9px;}
+  tbody td{
+    padding:9px 14px;
+    border-bottom:1px solid #131c19;
+    color:var(--text);
+    vertical-align:top;
+  }
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr.main-row{cursor:pointer;}
+  tbody tr.main-row:hover{background:#0d1a15;}
+  tbody tr.main-row:hover td:first-child{color:var(--accent);}
+
+  .ip{color:#8fb5a8;}
+  .ip-cell{display:flex;align-items:center;gap:8px;}
+  .copy-btn{
+    background:none;
+    border:none;
+    color:var(--dim);
+    cursor:pointer;
+    font-size:12px;
+    padding:1px 4px;
+    border-radius:3px;
+    line-height:1;
+    opacity:.6;
+    transition:.12s;
+  }
+  .copy-btn:hover{opacity:1;color:var(--accent);background:rgba(57,255,157,0.08);}
+  .copy-btn.copied{color:var(--accent);opacity:1;}
+
+  .badge{
+    display:inline-block;
+    font-size:10px;
+    letter-spacing:.03em;
+    color:var(--accent);
+    border:1px solid var(--accent-dim);
+    background:rgba(57,255,157,0.06);
+    padding:2px 7px;
+    border-radius:20px;
+    margin-left:8px;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .badge:hover{background:rgba(57,255,157,0.14);}
+  .caret{display:inline-block;transition:transform .12s;margin-right:6px;color:var(--dim);}
+  tr.expanded .caret{transform:rotate(90deg);}
+
+  tr.hist-row td{
+    background:#0c1512;
+    padding:6px 14px 6px 34px;
+    font-size:11.5px;
+    color:var(--dim);
+    border-bottom:1px solid #101a17;
+  }
+  tr.hist-row td.ip{color:#6f9b8b;}
+  tr.hist-row.newest td{color:#a9c9bf;}
+  .hist-tag{
+    font-size:9px;
+    color:var(--bg);
+    background:var(--accent-dim);
+    padding:1px 6px;
+    border-radius:20px;
+    margin-left:8px;
+    letter-spacing:.05em;
+  }
+
+  .empty{
+    text-align:center;
+    padding:50px 20px;
+    color:var(--dim);
+    font-size:12px;
+    border:1px solid var(--line);
+    background:var(--panel);
+    border-radius:2px;
+  }
+  .empty .accent{color:var(--accent);}
+
+  .unlabeled-note{
+    font-size:11px;
+    color:var(--dim);
+    margin:0 0 8px 2px;
+    line-height:1.5;
+  }
+  .warn{color:var(--warn);}
+
+  .toast{
+    position:fixed;
+    bottom:24px;
+    left:50%;
+    transform:translateX(-50%) translateY(0);
+    background:var(--panel);
+    border:1px solid var(--accent-dim);
+    color:var(--accent);
+    padding:9px 18px;
+    border-radius:20px;
+    font-size:11.5px;
+    letter-spacing:.03em;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .15s, transform .15s;
+    max-width:80vw;
+    text-align:center;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px);}
+  .toast.err{border-color:#ff6161;color:#ff6161;}
+
+  footer{
+    margin-top:24px;
+    text-align:center;
+    color:var(--line);
+    font-size:10px;
+    letter-spacing:.1em;
+  }
+
+  @media (max-width:520px){
+    thead th:nth-child(3), tbody td:nth-child(3){display:none;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>PEER<span>_</span>LOG</h1>
+      <div class="sub"><span class="dot" id="syncDot"></span><span id="syncLabel">connecting...</span></div>
+    </div>
+    <div class="count" id="count"><b>0</b>players loaded</div>
+  </header>
+
+  <label class="dropzone" id="dropzone">
+    <input type="file" id="fileInput" accept=".csv" multiple>
+    <p class="main">Drop <span class="accent">.csv</span> file(s) here, or click to browse</p>
+    <p>expects columns: username, ip, location — synced to the cloud, so it's here next time on any device</p>
+  </label>
+
+  <div class="toolbar" id="toolbar" style="display:none;">
+    <input class="search" id="search" placeholder="filter by username, ip, or location...">
+    <button class="btn primary" id="exportBtn">Export filtered CSV</button>
+    <button class="btn danger" id="clearBtn">Clear synced log</button>
+  </div>
+
+  <div id="mainHolder"></div>
+  <div id="unlabeledHolder"></div>
+
+  <footer>-- end of log --</footer>
+</div>
+
+<div class="toast" id="toast">copied</div>
+
+<script>
+// ---- Supabase config (public/publishable key — safe to expose client-side,
+// access is restricted only by the RLS policies set on the project) ----
+const SUPABASE_URL = 'https://kimgthhwggzudpdediga.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_3vpCzgVNaI1LDQstLz9_dw_Lv8jCRnf';
+
+let rawRows = [];       // {username, ip, location, idx}
+let users = [];         // grouped by username
+let unlabeled = [];     // rows with no username
+let sortKey = 'username';
+let sortDir = 1;
+let expanded = new Set();
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const toolbar = document.getElementById('toolbar');
+const search = document.getElementById('search');
+const mainHolder = document.getElementById('mainHolder');
+const unlabeledHolder = document.getElementById('unlabeledHolder');
+const countEl = document.getElementById('count');
+const clearBtn = document.getElementById('clearBtn');
+const exportBtn = document.getElementById('exportBtn');
+const toast = document.getElementById('toast');
+const syncDot = document.getElementById('syncDot');
+const syncLabel = document.getElementById('syncLabel');
+
+function setSyncStatus(state, msg){
+  syncDot.className = 'dot ' + state;
+  syncLabel.textContent = msg;
+}
+
+// ---------- Supabase REST helpers ----------
+async function sbFetch(path, options={}){
+  const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    ...options,
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_KEY,
+      'Content-Type': 'application/json',
+      ...(options.headers||{})
+    }
+  });
+  if(!res.ok){
+    const text = await res.text().catch(()=> '');
+    throw new Error(text || res.statusText || 'request failed');
+  }
+  if(res.status === 204) return null;
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+const loadAllRows = () => sbFetch('peer_rows?select=id,username,ip,location&order=id.asc');
+const insertRows = (rows) => sbFetch('peer_rows', {
+  method:'POST',
+  headers:{'Prefer':'return=minimal'},
+  body: JSON.stringify(rows)
+});
+const deleteAllRows = () => sbFetch('peer_rows?id=gt.0', {method:'DELETE'});
+
+// ---------- init: load synced log on page open ----------
+init();
+async function init(){
+  setSyncStatus('syncing', 'syncing...');
+  try{
+    const data = await loadAllRows();
+    rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id}));
+    buildGroups();
+    toolbar.style.display = 'flex';
+    render();
+    setSyncStatus('synced', 'synced');
+  }catch(e){
+    console.error(e);
+    setSyncStatus('err', 'sync failed — check connection');
+  }
+}
+
+dropzone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => {
+  if(e.target.files.length) handleFiles([...e.target.files]);
+  fileInput.value = '';
+});
+
+['dragover','dragenter'].forEach(ev=>{
+  dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+});
+['dragleave','drop'].forEach(ev=>{
+  dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); });
+});
+dropzone.addEventListener('drop', e=>{
+  if(e.dataTransfer.files.length) handleFiles([...e.dataTransfer.files]);
+});
+
+function normKey(k){
+  const s = k.trim().toLowerCase();
+  if(s.includes('user') || s.includes('player') || s.includes('name') || s.includes('gamertag') || s.includes('tag')) return 'username';
+  if(s.includes('ip')) return 'ip';
+  if(s.includes('loc') || s.includes('country') || s.includes('city')) return 'location';
+  return s;
+}
+
+function parseFile(file){
+  return new Promise(resolve=>{
+    Papa.parse(file, {
+      header:true,
+      skipEmptyLines:true,
+      complete: res => {
+        const fieldMap = {};
+        res.meta.fields.forEach(f => fieldMap[f] = normKey(f));
+        const parsed = res.data.map(r => {
+          const out = {username:'', ip:'', location:''};
+          Object.keys(r).forEach(k=>{
+            const nk = fieldMap[k];
+            if(nk === 'username' || nk === 'ip' || nk === 'location'){
+              out[nk] = (r[k]||'').toString().trim();
+            }
+          });
+          return out;
+        }).filter(r => r.username || r.ip || r.location);
+        resolve(parsed);
+      },
+      error: () => resolve([])
+    });
+  });
+}
+
+async function handleFiles(files){
+  setSyncStatus('syncing', 'uploading...');
+  const results = await Promise.all(files.map(parseFile));
+  const allNewRows = results.flat();
+
+  if(!allNewRows.length){
+    setSyncStatus('synced', 'synced');
+    return;
+  }
+
+  try{
+    await insertRows(allNewRows.map(r => ({username:r.username, ip:r.ip, location:r.location})));
+    const data = await loadAllRows();
+    rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id}));
+    buildGroups();
+    toolbar.style.display = 'flex';
+    render();
+    setSyncStatus('synced', 'synced');
+    showToast(`added ${allNewRows.length} rows`);
+  }catch(e){
+    console.error(e);
+    setSyncStatus('err', 'upload failed — check connection');
+    showToast('upload failed — check connection', true);
+  }
+}
+
+// rawRows.idx = database id, which increases in insertion order across all
+// devices. The row with the highest idx for a username is its most recent connection.
+function buildGroups(){
+  const map = new Map();
+  const unlabeledMap = new Map();
+
+  rawRows.forEach(r => {
+    if(r.username){
+      const key = r.username.toLowerCase();
+      if(!map.has(key)) map.set(key, {username:r.username, ipMap:new Map()});
+      const g = map.get(key);
+      g.username = r.username;
+      g.ipMap.set(r.ip, {location:r.location, idx:r.idx});
+    } else if(r.ip || r.location){
+      const key = r.ip + '|' + r.location;
+      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, count:0, lastIdx:r.idx});
+      const u = unlabeledMap.get(key);
+      u.count++;
+      u.lastIdx = Math.max(u.lastIdx, r.idx);
+    }
+  });
+
+  users = [...map.values()].map(g => {
+    const history = [...g.ipMap.entries()].map(([ip, v]) => ({ip, location:v.location, idx:v.idx}));
+    history.sort((a,b) => b.idx - a.idx);
+    return {
+      username: g.username,
+      latestIp: history[0].ip,
+      latestLocation: history[0].location,
+      history
+    };
+  });
+
+  unlabeled = [...unlabeledMap.values()].sort((a,b) => b.lastIdx - a.lastIdx);
+}
+
+function matchesQuery(u, q){
+  if(!q) return true;
+  if(u.username.toLowerCase().includes(q)) return true;
+  return u.history.some(h => h.ip.toLowerCase().includes(q) || h.location.toLowerCase().includes(q));
+}
+
+function copyToClipboard(text, btnEl){
+  const done = () => {
+    showToast(`copied ${text}`);
+    if(btnEl){
+      btnEl.classList.add('copied');
+      setTimeout(()=>btnEl.classList.remove('copied'), 900);
+    }
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(()=>fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function fallbackCopy(text, cb){
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try{ document.execCommand('copy'); cb(); }catch(e){}
+  document.body.removeChild(ta);
+}
+let toastTimer;
+function showToast(msg, isErr){
+  toast.textContent = msg;
+  toast.classList.toggle('err', !!isErr);
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>toast.classList.remove('show'), 1800);
+}
+
+function ipCell(ip){
+  const safe = escapeHtml(ip);
+  return `<span class="ip-cell"><span class="ip">${safe||'—'}</span>${ip?`<button class="copy-btn" data-copy="${safe}" title="copy IP">⧉</button>`:''}</span>`;
+}
+
+function render(){
+  const q = search.value.trim().toLowerCase();
+
+  let list = users.filter(u => matchesQuery(u, q));
+  list.sort((a,b)=>{
+    let va, vb;
+    if(sortKey==='ip'){ va=a.latestIp.toLowerCase(); vb=b.latestIp.toLowerCase(); }
+    else if(sortKey==='location'){ va=a.latestLocation.toLowerCase(); vb=b.latestLocation.toLowerCase(); }
+    else { va=a.username.toLowerCase(); vb=b.username.toLowerCase(); }
+    if(va<vb) return -1*sortDir;
+    if(va>vb) return 1*sortDir;
+    return 0;
+  });
+
+  countEl.innerHTML = `<b>${list.length}</b>players${q?` (of ${users.length})`:''}`;
+
+  if(!users.length && !unlabeled.length){
+    mainHolder.innerHTML = '';
+    unlabeledHolder.innerHTML = '';
+    return;
+  }
+
+  if(!list.length){
+    mainHolder.innerHTML = `<div class="empty">No matches for <span class="accent">"${q}"</span></div>`;
+  } else {
+    const arrow = key => sortKey===key ? `<span class="arrow">${sortDir>0?'▲':'▼'}</span>` : '';
+    const th = (key,label) => `<th class="${sortKey===key?'sorted':''}" data-key="${key}">${label}${arrow(key)}</th>`;
+
+    let rowsHtml = '';
+    list.forEach(u => {
+      const key = u.username.toLowerCase();
+      const isExpanded = expanded.has(key);
+      const multi = u.history.length > 1;
+      rowsHtml += `
+        <tr class="main-row ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
+          <td><span class="caret">${multi?'▸':''}</span>${escapeHtml(u.username)}</td>
+          <td>${ipCell(u.latestIp)}</td>
+          <td>${escapeHtml(u.latestLocation)||'—'}
+            ${multi?`<span class="badge" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
+          </td>
+        </tr>`;
+      if(isExpanded){
+        u.history.forEach((h, i) => {
+          rowsHtml += `
+            <tr class="hist-row ${i===0?'newest':''}">
+              <td></td>
+              <td>${ipCell(h.ip)}</td>
+              <td>${escapeHtml(h.location)||'—'}${i===0?'<span class="hist-tag">latest</span>':''}</td>
+            </tr>`;
+        });
+      }
+    });
+
+    mainHolder.innerHTML = `
+      <table>
+        <thead><tr>
+          ${th('username','Username')}
+          ${th('ip','Latest IP')}
+          ${th('location','Latest Location')}
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    `;
+
+    mainHolder.querySelectorAll('thead th').forEach(th=>{
+      th.addEventListener('click', ()=>{
+        const key = th.dataset.key;
+        if(sortKey === key) sortDir *= -1;
+        else { sortKey = key; sortDir = 1; }
+        render();
+      });
+    });
+
+    mainHolder.querySelectorAll('.main-row').forEach(tr=>{
+      tr.addEventListener('click', (e)=>{
+        if(e.target.closest('.badge') || e.target.closest('.copy-btn')) return;
+        const key = tr.dataset.key;
+        if(expanded.has(key)) expanded.delete(key);
+        else expanded.add(key);
+        render();
+      });
+    });
+    mainHolder.querySelectorAll('.badge').forEach(b=>{
+      b.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const key = b.dataset.key;
+        if(expanded.has(key)) expanded.delete(key);
+        else expanded.add(key);
+        render();
+      });
+    });
+  }
+
+  const filteredUnlabeled = unlabeled.filter(u =>
+    !q || u.ip.toLowerCase().includes(q) || u.location.toLowerCase().includes(q)
+  );
+
+  if(!filteredUnlabeled.length){
+    unlabeledHolder.innerHTML = '';
+  } else {
+    unlabeledHolder.innerHTML = `
+      <section class="block">
+        <p class="block-title"><span class="warn">⚠</span> No Username <span class="n">(${filteredUnlabeled.length})</span></p>
+        <p class="unlabeled-note">These entries had no player name in the log — usually a peer that disconnected before OctoSniff could resolve one. Can't be merged into a player's history, shown separately.</p>
+        <table>
+          <thead><tr><th>IP Address</th><th>Location</th><th>Times Seen</th></tr></thead>
+          <tbody>
+            ${filteredUnlabeled.map(u=>`
+              <tr>
+                <td>${ipCell(u.ip)}</td>
+                <td>${escapeHtml(u.location)||'—'}</td>
+                <td>${u.count}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </section>
+    `;
+  }
+
+  document.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      copyToClipboard(btn.dataset.copy, btn);
+    });
+  });
+}
+
+function csvEscape(v){
+  v = (v==null?'':String(v));
+  if(/[",\n]/.test(v)) return '"' + v.replace(/"/g,'""') + '"';
+  return v;
+}
+
+function exportFilteredCSV(){
+  const q = search.value.trim().toLowerCase();
+  const list = users.filter(u => matchesQuery(u, q));
+  const filteredUnlabeled = unlabeled.filter(u =>
+    !q || u.ip.toLowerCase().includes(q) || u.location.toLowerCase().includes(q)
+  );
+
+  if(!list.length && !filteredUnlabeled.length){
+    showToast('nothing to export');
+    return;
+  }
+
+  const lines = [['Username','IP','Location','IP History Count'].map(csvEscape).join(',')];
+  list.forEach(u=>{
+    lines.push([u.username, u.latestIp, u.latestLocation, u.history.length].map(csvEscape).join(','));
+  });
+  filteredUnlabeled.forEach(u=>{
+    lines.push(['', u.ip, u.location, u.count].map(csvEscape).join(','));
+  });
+
+  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  a.href = url;
+  a.download = `peer-log-filtered-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('exported CSV');
+}
+
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+search.addEventListener('input', render);
+exportBtn.addEventListener('click', exportFilteredCSV);
+clearBtn.addEventListener('click', async ()=>{
+  if(!confirm('This permanently deletes the synced log for every device. Continue?')) return;
+  setSyncStatus('syncing', 'clearing...');
+  try{
+    await deleteAllRows();
+    rawRows = []; users = []; unlabeled = []; expanded.clear();
+    sortKey = 'username'; sortDir = 1;
+    search.value = '';
+    countEl.innerHTML = '<b>0</b>players loaded';
+    mainHolder.innerHTML = '';
+    unlabeledHolder.innerHTML = '';
+    setSyncStatus('synced', 'synced');
+    showToast('log cleared');
+  }catch(e){
+    console.error(e);
+    setSyncStatus('err', 'clear failed — check connection');
+    showToast('clear failed — check connection', true);
+  }
+});
+</script>
+</body>
+</html>
