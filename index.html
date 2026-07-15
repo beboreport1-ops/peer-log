@@ -14,6 +14,7 @@
     --accent:#39ff9d;
     --accent-dim:#1f8a5c;
     --warn:#ffb454;
+    --danger:#ff6161;
     --mono: 'JetBrains Mono','Consolas',monospace;
   }
   *{box-sizing:border-box;}
@@ -52,7 +53,7 @@
   .dot{width:6px;height:6px;border-radius:50%;background:var(--dim);display:inline-block;}
   .dot.synced{background:var(--accent);box-shadow:0 0 6px var(--accent);}
   .dot.syncing{background:var(--warn);animation:pulse 1s infinite;}
-  .dot.err{background:#ff6161;}
+  .dot.err{background:var(--danger);}
   @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
   .count{
     font-size:11px;
@@ -120,7 +121,9 @@
   .btn:hover{border-color:var(--accent-dim);color:var(--accent);}
   .btn.primary{color:var(--accent);border-color:var(--accent-dim);}
   .btn.primary:hover{background:rgba(57,255,157,0.08);}
-  .btn.danger:hover{border-color:#ff6161;color:#ff6161;}
+  .btn.danger{color:var(--dim);}
+  .btn.danger:hover{border-color:var(--danger);color:var(--danger);background:rgba(255,97,97,0.06);}
+  .btn:disabled{opacity:.5;cursor:default;}
 
   section.block{margin-bottom:28px;}
   .block-title{
@@ -172,8 +175,8 @@
   tbody tr.main-row:hover td:first-child{color:var(--accent);}
 
   .ip{color:#8fb5a8;}
-  .ip-cell{display:flex;align-items:center;gap:8px;}
-  .copy-btn{
+  .ip-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .icon-btn{
     background:none;
     border:none;
     color:var(--dim);
@@ -185,8 +188,9 @@
     opacity:.6;
     transition:.12s;
   }
-  .copy-btn:hover{opacity:1;color:var(--accent);background:rgba(57,255,157,0.08);}
-  .copy-btn.copied{color:var(--accent);opacity:1;}
+  .icon-btn:hover{opacity:1;color:var(--accent);background:rgba(57,255,157,0.08);}
+  .icon-btn.copied{color:var(--accent);opacity:1;}
+  .icon-btn.del-btn:hover{color:var(--danger);background:rgba(255,97,97,0.1);}
 
   .badge{
     display:inline-block;
@@ -260,9 +264,10 @@
     transition:opacity .15s, transform .15s;
     max-width:80vw;
     text-align:center;
+    z-index:200;
   }
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px);}
-  .toast.err{border-color:#ff6161;color:#ff6161;}
+  .toast.err{border-color:var(--danger);color:var(--danger);}
 
   footer{
     margin-top:24px;
@@ -272,13 +277,106 @@
     letter-spacing:.1em;
   }
 
+  /* ---- gate screens (password / hidden) ---- */
+  .gate-screen{
+    min-height:80vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .gate-box{
+    width:100%;
+    max-width:320px;
+    text-align:center;
+  }
+  .gate-title{
+    font-size:15px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    margin:0 0 6px;
+  }
+  .gate-title span{color:var(--accent);}
+  .gate-sub{color:var(--dim);font-size:11.5px;margin:0 0 18px;}
+  .gate-input{
+    width:100%;
+    background:var(--panel);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:11px 14px;
+    font-family:var(--mono);
+    font-size:13px;
+    border-radius:2px;
+    outline:none;
+    margin-bottom:10px;
+  }
+  .gate-input:focus{border-color:var(--accent-dim);}
+  .gate-error{color:var(--danger);font-size:11px;margin:0 0 10px;}
+  .gate-submit{width:100%;}
+  .gate-dot{
+    width:10px;height:10px;border-radius:50%;
+    background:var(--line);
+    border:none;
+    cursor:pointer;
+  }
+  .gate-dot:hover{background:var(--accent-dim);}
+
+  /* ---- modal ---- */
+  .modal-overlay{
+    position:fixed;inset:0;
+    background:rgba(0,0,0,.6);
+    display:flex;align-items:center;justify-content:center;
+    z-index:100;
+    padding:20px;
+  }
+  .modal-box{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:3px;
+    padding:22px;
+    width:100%;
+    max-width:320px;
+  }
+  .modal-box h3{
+    margin:0 0 14px;
+    font-size:12.5px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    color:var(--text);
+  }
+  .modal-label{
+    display:block;
+    font-size:10.5px;
+    color:var(--dim);
+    letter-spacing:.04em;
+    margin-bottom:12px;
+  }
+  .modal-input{
+    display:block;
+    width:100%;
+    margin-top:6px;
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:9px 11px;
+    font-family:var(--mono);
+    font-size:12.5px;
+    border-radius:2px;
+    outline:none;
+  }
+  .modal-input:focus{border-color:var(--accent-dim);}
+  .modal-error{color:var(--danger);font-size:11px;margin:0 0 12px;display:none;}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;}
+
   @media (max-width:520px){
     thead th:nth-child(3), tbody td:nth-child(3){display:none;}
   }
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<div id="gateScreen"></div>
+
+<div class="wrap" id="app" style="display:none;">
 
   <header>
     <div>
@@ -297,6 +395,8 @@
   <div class="toolbar" id="toolbar" style="display:none;">
     <input class="search" id="search" placeholder="filter by username, ip, or location...">
     <button class="btn primary" id="exportBtn">Export filtered CSV</button>
+    <button class="btn" id="changePassBtn">Change Password</button>
+    <button class="btn danger" id="hideBtn">Hide</button>
   </div>
 
   <div id="mainHolder"></div>
@@ -309,7 +409,7 @@
 
 <script>
 // ---- Supabase config (public/publishable key — safe to expose client-side,
-// access is restricted only by the RLS policies set on the project) ----
+// actual access is restricted by RLS policies + the password/key gate below) ----
 const SUPABASE_URL = 'https://kimgthhwggzudpdediga.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_3vpCzgVNaI1LDQstLz9_dw_Lv8jCRnf';
 
@@ -319,7 +419,11 @@ let unlabeled = [];     // rows with no username
 let sortKey = 'username';
 let sortDir = 1;
 let expanded = new Set();
+let passwordHash = null;
+let keyHash = null;
 
+const appEl = document.getElementById('app');
+const gateScreenEl = document.getElementById('gateScreen');
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
 const toolbar = document.getElementById('toolbar');
@@ -328,6 +432,8 @@ const mainHolder = document.getElementById('mainHolder');
 const unlabeledHolder = document.getElementById('unlabeledHolder');
 const countEl = document.getElementById('count');
 const exportBtn = document.getElementById('exportBtn');
+const changePassBtn = document.getElementById('changePassBtn');
+const hideBtn = document.getElementById('hideBtn');
 const toast = document.getElementById('toast');
 const syncDot = document.getElementById('syncDot');
 const syncLabel = document.getElementById('syncLabel');
@@ -335,6 +441,13 @@ const syncLabel = document.getElementById('syncLabel');
 function setSyncStatus(state, msg){
   syncDot.className = 'dot ' + state;
   syncLabel.textContent = msg;
+}
+
+// ---------- hashing ----------
+async function sha256Hex(str){
+  const enc = new TextEncoder().encode(str || '');
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
 // ---------- Supabase REST helpers ----------
@@ -362,11 +475,235 @@ const insertRows = (rows) => sbFetch('peer_rows', {
   headers:{'Prefer':'return=minimal'},
   body: JSON.stringify(rows)
 });
-const deleteAllRows = () => sbFetch('peer_rows?id=gt.0', {method:'DELETE'});
+const deleteRowsByIds = (ids) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`, {method:'DELETE'});
+const patchAuth = (fields) => sbFetch('peer_log_auth?id=eq.1', {
+  method:'PATCH',
+  headers:{'Prefer':'return=minimal'},
+  body: JSON.stringify(fields)
+});
 
-// ---------- init: load synced log on page open ----------
-init();
+// ---------- generic modal ----------
+function openModal({title, fields, submitLabel='Confirm', danger=false, onSubmit}){
+  return new Promise((resolve)=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-box">
+        <h3>${title}</h3>
+        <div class="modal-fields">
+          ${fields.map(f=>`<label class="modal-label">${f.label}<input class="modal-input" type="${f.type||'text'}" data-field="${f.id}" autocomplete="off"></label>`).join('')}
+        </div>
+        <p class="modal-error"></p>
+        <div class="modal-actions">
+          <button class="btn modal-cancel">Cancel</button>
+          <button class="btn ${danger?'danger':'primary'} modal-submit">${submitLabel}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const errorEl = overlay.querySelector('.modal-error');
+    const submitBtn = overlay.querySelector('.modal-submit');
+    const cancelBtn = overlay.querySelector('.modal-cancel');
+    const inputs = [...overlay.querySelectorAll('.modal-input')];
+    if(inputs[0]) setTimeout(()=>inputs[0].focus(), 30);
+
+    function close(result){ overlay.remove(); resolve(result); }
+    function collect(){
+      const vals = {};
+      inputs.forEach(inp => vals[inp.dataset.field] = inp.value);
+      return vals;
+    }
+    async function doSubmit(){
+      submitBtn.disabled = true;
+      const prevLabel = submitBtn.textContent;
+      submitBtn.textContent = '...';
+      try{
+        const result = await onSubmit(collect());
+        if(result && result.ok){
+          close(true);
+          return;
+        }
+        errorEl.textContent = (result && result.message) || 'Failed';
+        errorEl.style.display = 'block';
+      }catch(e){
+        errorEl.textContent = e.message || 'Error';
+        errorEl.style.display = 'block';
+      }
+      submitBtn.disabled = false;
+      submitBtn.textContent = prevLabel;
+    }
+    cancelBtn.addEventListener('click', ()=>close(false));
+    overlay.addEventListener('click', e=>{ if(e.target===overlay) close(false); });
+    submitBtn.addEventListener('click', doSubmit);
+    inputs.forEach(inp => inp.addEventListener('keydown', e=>{ if(e.key==='Enter') doSubmit(); }));
+  });
+}
+
+// ---------- auth gates ----------
 async function init(){
+  setSyncStatus('syncing', 'connecting...');
+  try{
+    const rows = await sbFetch('peer_log_auth?select=*&id=eq.1');
+    const row = rows && rows[0];
+    if(!row) throw new Error('auth not configured');
+    passwordHash = row.password_hash;
+    keyHash = row.key_hash;
+    if(row.hidden){
+      showHiddenGate();
+      setSyncStatus('synced', 'synced');
+      return;
+    }
+  }catch(e){
+    console.error(e);
+    gateScreenEl.innerHTML = `<div class="gate-screen"><div class="gate-box"><p class="gate-error" style="display:block;">Couldn't reach the log. Check your connection and reload the page.</p></div></div>`;
+    setSyncStatus('err', 'connection failed');
+    return;
+  }
+
+  if(sessionStorage.getItem('peerlog_unlocked') === '1'){
+    showApp();
+  } else {
+    showPasswordGate();
+  }
+  setSyncStatus('synced', 'synced');
+}
+
+function showHiddenGate(){
+  appEl.style.display = 'none';
+  gateScreenEl.innerHTML = `<div class="gate-screen"><button class="gate-dot" id="unhideBtn" title=""></button></div>`;
+  document.getElementById('unhideBtn').addEventListener('click', openUnhide);
+}
+
+function showPasswordGate(){
+  appEl.style.display = 'none';
+  gateScreenEl.innerHTML = `
+    <div class="gate-screen">
+      <div class="gate-box">
+        <h1 class="gate-title">PEER<span>_</span>LOG</h1>
+        <p class="gate-sub">Enter password to view</p>
+        <input class="gate-input" id="gatePass" type="password" placeholder="password" autocomplete="off">
+        <p class="gate-error" id="gateError"></p>
+        <button class="btn primary gate-submit" id="gateSubmit">Unlock</button>
+      </div>
+    </div>`;
+  const input = document.getElementById('gatePass');
+  const err = document.getElementById('gateError');
+  const submit = document.getElementById('gateSubmit');
+  setTimeout(()=>input.focus(), 30);
+
+  async function tryUnlock(){
+    submit.disabled = true;
+    const hash = await sha256Hex(input.value);
+    if(hash === passwordHash){
+      sessionStorage.setItem('peerlog_unlocked', '1');
+      gateScreenEl.innerHTML = '';
+      showApp();
+    } else {
+      err.textContent = 'Incorrect password';
+      err.style.display = 'block';
+      submit.disabled = false;
+    }
+  }
+  submit.addEventListener('click', tryUnlock);
+  input.addEventListener('keydown', e => { if(e.key==='Enter') tryUnlock(); });
+}
+
+function showApp(){
+  gateScreenEl.innerHTML = '';
+  appEl.style.display = 'block';
+  refreshFromCloud();
+}
+
+async function openUnhide(){
+  await openModal({
+    title: 'Enter key to unhide',
+    fields: [{id:'key', label:'Key', type:'password'}],
+    submitLabel: 'Unhide',
+    onSubmit: async (vals) => {
+      const h = await sha256Hex(vals.key);
+      if(h !== keyHash) return {ok:false, message:'Incorrect key'};
+      try{
+        await patchAuth({hidden:false});
+        if(sessionStorage.getItem('peerlog_unlocked') === '1') showApp();
+        else showPasswordGate();
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message:'Update failed — check connection'};
+      }
+    }
+  });
+}
+
+async function openHide(){
+  await openModal({
+    title: 'Hide the log',
+    fields: [{id:'key', label:'Key', type:'password'}],
+    submitLabel: 'Hide',
+    danger: true,
+    onSubmit: async (vals) => {
+      const h = await sha256Hex(vals.key);
+      if(h !== keyHash) return {ok:false, message:'Incorrect key'};
+      try{
+        await patchAuth({hidden:true});
+        showHiddenGate();
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message:'Update failed — check connection'};
+      }
+    }
+  });
+}
+
+async function openChangePassword(){
+  await openModal({
+    title: 'Change password',
+    fields: [
+      {id:'key', label:'Key', type:'password'},
+      {id:'newpass', label:'New password', type:'password'},
+      {id:'confirm', label:'Confirm new password', type:'password'}
+    ],
+    submitLabel: 'Save',
+    onSubmit: async (vals) => {
+      const h = await sha256Hex(vals.key);
+      if(h !== keyHash) return {ok:false, message:'Incorrect key'};
+      if(!vals.newpass) return {ok:false, message:'Enter a new password'};
+      if(vals.newpass !== vals.confirm) return {ok:false, message:"Passwords don't match"};
+      try{
+        const newHash = await sha256Hex(vals.newpass);
+        await patchAuth({password_hash:newHash});
+        passwordHash = newHash;
+        showToast('password changed');
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message:'Update failed — check connection'};
+      }
+    }
+  });
+}
+
+async function promptDeleteIp(ids, ip){
+  if(!ids || !ids.length) return;
+  await openModal({
+    title: `Delete ${ip || 'this IP'}?`,
+    fields: [{id:'key', label:'Enter key to confirm', type:'password'}],
+    submitLabel: 'Delete',
+    danger: true,
+    onSubmit: async (vals) => {
+      const h = await sha256Hex(vals.key);
+      if(h !== keyHash) return {ok:false, message:'Incorrect key'};
+      try{
+        await deleteRowsByIds(ids);
+        await refreshFromCloud();
+        showToast(`deleted ${ip}`);
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message:'Delete failed — check connection'};
+      }
+    }
+  });
+}
+
+// ---------- data loading ----------
+async function refreshFromCloud(){
   setSyncStatus('syncing', 'syncing...');
   try{
     const data = await loadAllRows();
@@ -386,7 +723,6 @@ fileInput.addEventListener('change', e => {
   if(e.target.files.length) handleFiles([...e.target.files]);
   fileInput.value = '';
 });
-
 ['dragover','dragenter'].forEach(ev=>{
   dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
 });
@@ -434,20 +770,13 @@ async function handleFiles(files){
   setSyncStatus('syncing', 'uploading...');
   const results = await Promise.all(files.map(parseFile));
   const allNewRows = results.flat();
-
   if(!allNewRows.length){
     setSyncStatus('synced', 'synced');
     return;
   }
-
   try{
     await insertRows(allNewRows.map(r => ({username:r.username, ip:r.ip, location:r.location})));
-    const data = await loadAllRows();
-    rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id}));
-    buildGroups();
-    toolbar.style.display = 'flex';
-    render();
-    setSyncStatus('synced', 'synced');
+    await refreshFromCloud();
     showToast(`added ${allNewRows.length} rows`);
   }catch(e){
     console.error(e);
@@ -456,8 +785,9 @@ async function handleFiles(files){
   }
 }
 
-// rawRows.idx = database id, which increases in insertion order across all
-// devices. The row with the highest idx for a username is its most recent connection.
+// rawRows.idx = database id, increasing in insertion order across all devices.
+// For each username+ip pair we track every underlying row id (for deletion)
+// and treat the highest idx as the most recent sighting.
 function buildGroups(){
   const map = new Map();
   const unlabeledMap = new Map();
@@ -468,18 +798,26 @@ function buildGroups(){
       if(!map.has(key)) map.set(key, {username:r.username, ipMap:new Map()});
       const g = map.get(key);
       g.username = r.username;
-      g.ipMap.set(r.ip, {location:r.location, idx:r.idx});
+      const existing = g.ipMap.get(r.ip);
+      if(existing){
+        existing.location = r.location;
+        existing.idx = r.idx;
+        existing.ids.push(r.idx);
+      } else {
+        g.ipMap.set(r.ip, {location:r.location, idx:r.idx, ids:[r.idx]});
+      }
     } else if(r.ip || r.location){
       const key = r.ip + '|' + r.location;
-      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, count:0, lastIdx:r.idx});
+      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, count:0, lastIdx:r.idx, ids:[]});
       const u = unlabeledMap.get(key);
       u.count++;
+      u.ids.push(r.idx);
       u.lastIdx = Math.max(u.lastIdx, r.idx);
     }
   });
 
   users = [...map.values()].map(g => {
-    const history = [...g.ipMap.entries()].map(([ip, v]) => ({ip, location:v.location, idx:v.idx}));
+    const history = [...g.ipMap.entries()].map(([ip, v]) => ({ip, location:v.location, idx:v.idx, ids:v.ids}));
     history.sort((a,b) => b.idx - a.idx);
     return {
       username: g.username,
@@ -531,9 +869,11 @@ function showToast(msg, isErr){
   toastTimer = setTimeout(()=>toast.classList.remove('show'), 1800);
 }
 
-function ipCell(ip){
+function ipCell(ip, ids){
   const safe = escapeHtml(ip);
-  return `<span class="ip-cell"><span class="ip">${safe||'—'}</span>${ip?`<button class="copy-btn" data-copy="${safe}" title="copy IP">⧉</button>`:''}</span>`;
+  const idsAttr = (ids||[]).join(',');
+  const delBtn = (ids && ids.length) ? `<button class="icon-btn del-btn" data-ids="${idsAttr}" data-ip="${safe}" title="delete this IP (requires key)">🗑</button>` : '';
+  return `<span class="ip-cell"><span class="ip">${safe||'—'}</span>${ip?`<button class="icon-btn copy-btn" data-copy="${safe}" title="copy IP">⧉</button>`:''}${delBtn}</span>`;
 }
 
 function render(){
@@ -572,7 +912,7 @@ function render(){
       rowsHtml += `
         <tr class="main-row ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td><span class="caret">${multi?'▸':''}</span>${escapeHtml(u.username)}</td>
-          <td>${ipCell(u.latestIp)}</td>
+          <td>${ipCell(u.latestIp, u.history[0].ids)}</td>
           <td>${escapeHtml(u.latestLocation)||'—'}
             ${multi?`<span class="badge" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
           </td>
@@ -582,7 +922,7 @@ function render(){
           rowsHtml += `
             <tr class="hist-row ${i===0?'newest':''}">
               <td></td>
-              <td>${ipCell(h.ip)}</td>
+              <td>${ipCell(h.ip, h.ids)}</td>
               <td>${escapeHtml(h.location)||'—'}${i===0?'<span class="hist-tag">latest</span>':''}</td>
             </tr>`;
         });
@@ -611,7 +951,7 @@ function render(){
 
     mainHolder.querySelectorAll('.main-row').forEach(tr=>{
       tr.addEventListener('click', (e)=>{
-        if(e.target.closest('.badge') || e.target.closest('.copy-btn')) return;
+        if(e.target.closest('.badge') || e.target.closest('.icon-btn')) return;
         const key = tr.dataset.key;
         if(expanded.has(key)) expanded.delete(key);
         else expanded.add(key);
@@ -645,7 +985,7 @@ function render(){
           <tbody>
             ${filteredUnlabeled.map(u=>`
               <tr>
-                <td>${ipCell(u.ip)}</td>
+                <td>${ipCell(u.ip, u.ids)}</td>
                 <td>${escapeHtml(u.location)||'—'}</td>
                 <td>${u.count}</td>
               </tr>
@@ -660,6 +1000,13 @@ function render(){
     btn.addEventListener('click', (e)=>{
       e.stopPropagation();
       copyToClipboard(btn.dataset.copy, btn);
+    });
+  });
+  document.querySelectorAll('.del-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const ids = btn.dataset.ids.split(',').filter(Boolean).map(Number);
+      promptDeleteIp(ids, btn.dataset.ip);
     });
   });
 }
@@ -709,6 +1056,10 @@ function escapeHtml(s){
 
 search.addEventListener('input', render);
 exportBtn.addEventListener('click', exportFilteredCSV);
+changePassBtn.addEventListener('click', openChangePassword);
+hideBtn.addEventListener('click', openHide);
+
+init();
 </script>
 </body>
 </html>
