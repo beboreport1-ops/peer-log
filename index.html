@@ -1034,11 +1034,34 @@ function countryCodeToFlag(code){
   const points = [...code.toUpperCase()].map(c => 127397 + c.charCodeAt(0));
   return String.fromCodePoint(...points);
 }
+
+const COUNTRY_NAME_TO_CODE = {
+  "united states":"US","usa":"US","us":"US","united kingdom":"GB","uk":"GB",
+  "peru":"PE","new zealand":"NZ","austria":"AT","puerto rico":"PR",
+  "saudi arabia":"SA","canada":"CA","australia":"AU","germany":"DE",
+  "france":"FR","spain":"ES","italy":"IT","netherlands":"NL","brazil":"BR",
+  "mexico":"MX","japan":"JP","south korea":"KR","china":"CN","india":"IN",
+  "russia":"RU","sweden":"SE","norway":"NO","denmark":"DK","finland":"FI",
+  "poland":"PL","portugal":"PT","ireland":"IE","belgium":"BE","switzerland":"CH",
+  "united arab emirates":"AE","uae":"AE","turkey":"TR","egypt":"EG",
+  "south africa":"ZA","argentina":"AR","chile":"CL","colombia":"CO",
+  "philippines":"PH","indonesia":"ID","thailand":"TH","vietnam":"VN",
+  "malaysia":"MY","singapore":"SG","israel":"IL","greece":"GR","romania":"RO",
+  "ukraine":"UA","czech republic":"CZ","hungary":"HU","kuwait":"KW",
+  "qatar":"QA","bahrain":"BH","oman":"OM","jordan":"JO","lebanon":"LB",
+  "iraq":"IQ","pakistan":"PK","bangladesh":"BD"
+};
+function countryNameToCode(name){
+  if(!name) return '';
+  return COUNTRY_NAME_TO_CODE[name.trim().toLowerCase()] || '';
+}
+
 function locationCell(location){
   if(!location) return '—';
   const parts = location.split(',');
   const last = parts[parts.length-1].trim();
-  const flag = countryCodeToFlag(last);
+  const code = /^[A-Za-z]{2}$/.test(last) ? last : countryNameToCode(last);
+  const flag = code ? countryCodeToFlag(code) : '';
   return flag ? `${flag} ${escapeHtml(location)}` : escapeHtml(location);
 }
 
