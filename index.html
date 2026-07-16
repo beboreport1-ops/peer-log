@@ -143,6 +143,24 @@
   .btn.danger:hover{border-color:var(--danger);color:var(--danger);background:rgba(255,97,97,0.06);}
   .btn:disabled{opacity:.5;cursor:default;}
 
+  .bulk-bar{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin:-4px 0 14px;
+    padding:8px 12px;
+    background:var(--panel);
+    border:1px solid var(--accent-dim);
+    border-radius:2px;
+    flex-wrap:wrap;
+  }
+  .bulk-bar .count{color:var(--accent);font-size:11px;letter-spacing:.05em;margin-right:auto;}
+  .checkbox-col{width:26px;}
+  .row-check{
+    width:14px;height:14px;cursor:pointer;accent-color:var(--accent);
+    vertical-align:middle;
+  }
+
   section.block{margin-bottom:28px;}
   .block-title{
     font-size:11px;
@@ -417,7 +435,7 @@
   .modal-actions{display:flex;gap:8px;justify-content:flex-end;}
 
   @media (max-width:520px){
-    thead th:nth-child(4), tbody td:nth-child(4){display:none;}
+    thead th:nth-child(5), tbody td:nth-child(5){display:none;}
     .label-input{min-width:50px;font-size:11px;}
   }
 </style>
@@ -452,6 +470,15 @@
     <button class="btn" id="changePassBtn" style="display:none;">Change Password</button>
   </div>
 
+  <div class="bulk-bar" id="bulkBar" style="display:none;">
+    <span class="count" id="bulkCount">0 selected</span>
+    <button class="btn" id="bulkExportBtn">Export Selected</button>
+    <button class="btn" id="bulkHideBtn" style="display:none;">Hide Selected</button>
+    <button class="btn" id="bulkUnhideBtn" style="display:none;">Unhide Selected</button>
+    <button class="btn danger" id="bulkDeleteBtn" style="display:none;">Delete Selected</button>
+    <button class="btn" id="bulkClearBtn">Clear</button>
+  </div>
+
   <div id="mainHolder"></div>
   <div id="unlabeledHolder"></div>
 
@@ -474,6 +501,7 @@ let sortDir = 1;
 let expanded = new Set();
 let labels = new Map();    // username_key -> {label, hidden}
 let ipHidden = new Map();  // ip -> boolean
+let selected = new Set();  // composite keys of selected rows (users + unlabeled)
 let passwordHash = null;
 let keyHash = null;
 let role = null;           // 'view' | 'admin'
@@ -489,6 +517,13 @@ const unlabeledHolder = document.getElementById('unlabeledHolder');
 const countEl = document.getElementById('count');
 const exportBtn = document.getElementById('exportBtn');
 const changePassBtn = document.getElementById('changePassBtn');
+const bulkBar = document.getElementById('bulkBar');
+const bulkCount = document.getElementById('bulkCount');
+const bulkExportBtn = document.getElementById('bulkExportBtn');
+const bulkHideBtn = document.getElementById('bulkHideBtn');
+const bulkUnhideBtn = document.getElementById('bulkUnhideBtn');
+const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
+const bulkClearBtn = document.getElementById('bulkClearBtn');
 const roleTag = document.getElementById('roleTag');
 const logoutBtn = document.getElementById('logoutBtn');
 const toast = document.getElementById('toast');
@@ -983,6 +1018,129 @@ function matchesQuery(u, q){
   return u.history.some(h => h.ip.toLowerCase().includes(q) || h.location.toLowerCase().includes(q));
 }
 
+// ---------- multi-select (bulk export / delete) ----------
+function userSelKey(u){ return 'u::' + u.username.toLowerCase(); }
+function unlabeledSelKey(u){ return u.labelKey; }
+
+function getSelectedUserObjs(){
+  return users.filter(u => selected.has(userSelKey(u)));
+}
+function getSelectedUnlabeledObjs(){
+  return unlabeled.filter(u => selected.has(unlabeledSelKey(u)));
+}
+
+function renderBulkBar(){
+  const selUsers = getSelectedUserObjs();
+  const selUnlabeled = getSelectedUnlabeledObjs();
+  const total = selUsers.length + selUnlabeled.length;
+  const admin = isAdmin();
+  bulkDeleteBtn.style.display = admin ? 'inline-block' : 'none';
+  bulkHideBtn.style.display = admin ? 'inline-block' : 'none';
+  bulkUnhideBtn.style.display = admin ? 'inline-block' : 'none';
+  if(!total){
+    bulkBar.style.display = 'none';
+    return;
+  }
+  bulkBar.style.display = 'flex';
+  bulkCount.textContent = `${total} selected`;
+}
+
+function buildCsvLines(userList, unlabeledList){
+  const lines = [['Label','PSN ID','IP','Location','IP History Count'].map(csvEscape).join(',')];
+  userList.forEach(u=>{
+    const labelVal = (labels.get(u.username.toLowerCase()) || {}).label || '';
+    lines.push([labelVal, u.username, u.latestIp, u.latestLocation, u.history.length].map(csvEscape).join(','));
+  });
+  unlabeledList.forEach(u=>{
+    const labelVal = (labels.get(u.labelKey) || {}).label || '';
+    lines.push([labelVal, '', u.ip, u.location, u.count].map(csvEscape).join(','));
+  });
+  return lines;
+}
+
+function downloadCsvLines(lines, filenamePrefix){
+  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  a.href = url;
+  a.download = `${filenamePrefix}-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportSelectedCSV(){
+  const selUsers = getSelectedUserObjs();
+  const selUnlabeled = getSelectedUnlabeledObjs();
+  if(!selUsers.length && !selUnlabeled.length){
+    showToast('nothing selected');
+    return;
+  }
+  downloadCsvLines(buildCsvLines(selUsers, selUnlabeled), 'peer-log-selected');
+  showToast(`exported ${selUsers.length + selUnlabeled.length} selected row${(selUsers.length+selUnlabeled.length)>1?'s':''}`);
+}
+
+async function bulkDeleteSelected(){
+  if(!isAdmin()) return;
+  const selUsers = getSelectedUserObjs();
+  const selUnlabeled = getSelectedUnlabeledObjs();
+  const total = selUsers.length + selUnlabeled.length;
+  if(!total) return;
+  const allIds = [
+    ...selUsers.flatMap(u => u.history.flatMap(h => h.ids)),
+    ...selUnlabeled.flatMap(u => u.ids)
+  ];
+  await confirmModal({
+    title: `Delete ${total} selected row${total>1?'s':''}? This can't be undone.`,
+    submitLabel: 'Delete',
+    danger: true,
+    onConfirm: async () => {
+      await deleteRowsByIds(allIds);
+      selected.clear();
+      await refreshFromCloud();
+      showToast(`deleted ${total} row${total>1?'s':''}`);
+    }
+  });
+}
+
+async function bulkSetHidden(hideFlag){
+  if(!isAdmin()) return;
+  const selUsers = getSelectedUserObjs();
+  const selUnlabeled = getSelectedUnlabeledObjs();
+  const total = selUsers.length + selUnlabeled.length;
+  if(!total) return;
+  const verb = hideFlag ? 'Hide' : 'Unhide';
+  await confirmModal({
+    title: `${verb} ${total} selected row${total>1?'s':''}?${hideFlag?' (PSN ID + IPs for players, IP for unlabeled entries)':''}`,
+    submitLabel: verb,
+    danger: hideFlag,
+    onConfirm: async () => {
+      await Promise.all([
+        ...selUsers.map(u=>{
+          const key = u.username.toLowerCase();
+          const current = labels.get(key) || {label:'', hidden:false};
+          labels.set(key, {label:current.label, hidden:hideFlag});
+          return saveLabelRemote(key, current.label, hideFlag);
+        }),
+        ...selUnlabeled.map(u=>{
+          ipHidden.set(u.ip, hideFlag);
+          return saveIpHiddenRemote(u.ip, hideFlag);
+        })
+      ]);
+      render();
+      showToast(`${hideFlag?'hid':'unhid'} ${total} row${total>1?'s':''}`);
+    }
+  });
+}
+
+bulkExportBtn.addEventListener('click', exportSelectedCSV);
+bulkHideBtn.addEventListener('click', ()=>bulkSetHidden(true));
+bulkUnhideBtn.addEventListener('click', ()=>bulkSetHidden(false));
+bulkDeleteBtn.addEventListener('click', bulkDeleteSelected);
+bulkClearBtn.addEventListener('click', ()=>{ selected.clear(); render(); });
+
 function copyToClipboard(text, btnEl){
   const done = () => {
     showToast(`copied ${text}`);
@@ -1133,8 +1291,11 @@ function render(){
       const nameEye = admin
         ? `<button class="icon-btn eye-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="${nameHidden?'unhide':'hide'} this row (PSN ID + IPs)">${nameHidden?'🙈':'👁'}</button>`
         : '';
+      const uSelKey = userSelKey(u);
+      const rowChecked = selected.has(uSelKey) ? 'checked' : '';
       rowsHtml += `
         <tr class="main-row ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
+          <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
           <td>${labelCell}</td>
           <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameEye}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden:nameHidden, showEye:false})}</td>
@@ -1148,6 +1309,7 @@ function render(){
             <tr class="hist-row ${i===0?'newest':''}">
               <td></td>
               <td></td>
+              <td></td>
               <td>${ipCell(h.ip, h.ids, {hidden:nameHidden, showEye:false})}</td>
               <td>${locationCell(h.location)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
             </tr>`;
@@ -1155,9 +1317,13 @@ function render(){
       }
     });
 
+    const allUserSelKeys = list.map(userSelKey);
+    const allUsersChecked = allUserSelKeys.length>0 && allUserSelKeys.every(k=>selected.has(k));
+
     mainHolder.innerHTML = `
       <table>
         <thead><tr>
+          <th class="checkbox-col"><input type="checkbox" id="selectAllUsers" ${allUsersChecked?'checked':''}></th>
           <th>Label</th>
           ${th('username','PSN ID')}
           ${th('ip','Latest IP')}
@@ -1166,6 +1332,24 @@ function render(){
         <tbody>${rowsHtml}</tbody>
       </table>
     `;
+
+    document.getElementById('selectAllUsers').addEventListener('click', e=>{
+      e.stopPropagation();
+      if(e.target.checked) allUserSelKeys.forEach(k=>selected.add(k));
+      else allUserSelKeys.forEach(k=>selected.delete(k));
+      render();
+    });
+
+    mainHolder.querySelectorAll('.row-check').forEach(cb=>{
+      cb.addEventListener('click', e => e.stopPropagation());
+      cb.addEventListener('change', e=>{
+        const k = cb.dataset.selKey;
+        if(cb.checked) selected.add(k); else selected.delete(k);
+        renderBulkBar();
+        const sa = document.getElementById('selectAllUsers');
+        if(sa) sa.checked = allUserSelKeys.every(kk=>selected.has(kk));
+      });
+    });
 
     mainHolder.querySelectorAll('thead th').forEach(th=>{
       th.addEventListener('click', ()=>{
@@ -1179,7 +1363,7 @@ function render(){
 
     mainHolder.querySelectorAll('.main-row').forEach(tr=>{
       tr.addEventListener('click', (e)=>{
-        if(e.target.closest('.badge') || e.target.closest('.icon-btn') || e.target.closest('.label-input')) return;
+        if(e.target.closest('.badge') || e.target.closest('.icon-btn') || e.target.closest('.label-input') || e.target.closest('.row-check')) return;
         const key = tr.dataset.key;
         if(expanded.has(key)) expanded.delete(key);
         else expanded.add(key);
@@ -1204,20 +1388,29 @@ function render(){
   if(!filteredUnlabeled.length){
     unlabeledHolder.innerHTML = '';
   } else {
+    const allUnlabeledSelKeys = filteredUnlabeled.map(unlabeledSelKey);
+    const allUnlabeledChecked = allUnlabeledSelKeys.length>0 && allUnlabeledSelKeys.every(k=>selected.has(k));
+
     unlabeledHolder.innerHTML = `
       <section class="block">
         <p class="block-title"><span class="warn">⚠</span> No PSN ID <span class="n">(${filteredUnlabeled.length})</span></p>
         <p class="unlabeled-note">These entries had no PSN ID in the log — usually a peer that disconnected before OctoSniff could resolve one. Can't be merged into a player's history, shown separately.</p>
         <table>
-          <thead><tr><th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th></tr></thead>
+          <thead><tr>
+            <th class="checkbox-col"><input type="checkbox" id="selectAllUnlabeled" ${allUnlabeledChecked?'checked':''}></th>
+            <th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th>
+          </tr></thead>
           <tbody>
             ${filteredUnlabeled.map(u=>{
               const labelInfo = labels.get(u.labelKey) || {label:'', hidden:false};
               const labelCell = admin
                 ? `<input class="label-input" data-key="${escapeHtml(u.labelKey)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
                 : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
+              const uSelKey = unlabeledSelKey(u);
+              const rowChecked = selected.has(uSelKey) ? 'checked' : '';
               return `
               <tr>
+                <td class="checkbox-col"><input type="checkbox" class="row-check unlabeled-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
                 <td>${labelCell}</td>
                 <td>${ipCell(u.ip, u.ids, {hidden: ipHidden.get(u.ip)||false, showEye:true})}</td>
                 <td>${locationCell(u.location)}</td>
@@ -1228,7 +1421,26 @@ function render(){
         </table>
       </section>
     `;
+
+    document.getElementById('selectAllUnlabeled').addEventListener('click', e=>{
+      e.stopPropagation();
+      if(e.target.checked) allUnlabeledSelKeys.forEach(k=>selected.add(k));
+      else allUnlabeledSelKeys.forEach(k=>selected.delete(k));
+      render();
+    });
+
+    unlabeledHolder.querySelectorAll('.unlabeled-check').forEach(cb=>{
+      cb.addEventListener('change', e=>{
+        const k = cb.dataset.selKey;
+        if(cb.checked) selected.add(k); else selected.delete(k);
+        renderBulkBar();
+        const sa = document.getElementById('selectAllUnlabeled');
+        if(sa) sa.checked = allUnlabeledSelKeys.every(kk=>selected.has(kk));
+      });
+    });
   }
+
+  renderBulkBar();
 
   if(admin){
     document.querySelectorAll('.label-input').forEach(inp=>{
@@ -1290,26 +1502,7 @@ function exportFilteredCSV(){
     return;
   }
 
-  const lines = [['Label','PSN ID','IP','Location','IP History Count'].map(csvEscape).join(',')];
-  list.forEach(u=>{
-    const labelVal = (labels.get(u.username.toLowerCase()) || {}).label || '';
-    lines.push([labelVal, u.username, u.latestIp, u.latestLocation, u.history.length].map(csvEscape).join(','));
-  });
-  filteredUnlabeled.forEach(u=>{
-    const labelVal = (labels.get(u.labelKey) || {}).label || '';
-    lines.push([labelVal, '', u.ip, u.location, u.count].map(csvEscape).join(','));
-  });
-
-  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-  a.href = url;
-  a.download = `peer-log-filtered-${stamp}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadCsvLines(buildCsvLines(list, filteredUnlabeled), 'peer-log-filtered');
   showToast('exported CSV');
 }
 
