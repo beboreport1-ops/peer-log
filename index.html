@@ -248,6 +248,7 @@
   .icon-btn.copied{color:var(--accent);opacity:1;}
   .icon-btn.del-btn:hover{color:var(--danger);background:rgba(255,97,97,0.1);}
   .icon-btn.eye-btn:hover{color:var(--warn);background:rgba(255,180,84,0.1);}
+  .icon-btn.eye-btn{border:1px solid var(--line);border-radius:20px;padding:2px 8px;font-size:10px;letter-spacing:.02em;margin-left:4px;}
 
   .badge{
     display:inline-block;
@@ -1335,7 +1336,7 @@ function ipCell(ip, ids, opts={}){
   const idsAttr = (ids||[]).join(',');
   const copyBtn = ip ? `<button class="icon-btn copy-btn" data-copy="${copySafe}" title="copy IP">⧉</button>` : '';
   const delBtn = (isAdmin() && ids && ids.length) ? `<button class="icon-btn del-btn" data-ids="${idsAttr}" data-ip="${safe}" title="delete this IP">🗑</button>` : '';
-  const eyeBtn = (isAdmin() && showEye && ip) ? `<button class="icon-btn eye-btn" data-ip="${safe}" title="${hidden?'unhide':'hide'} this IP">${hidden?'🙈':'👁'}</button>` : '';
+  const eyeBtn = (isAdmin() && showEye && ip) ? `<button class="icon-btn eye-btn" data-ip="${safe}" title="${hidden?'unhide':'hide'} this IP">${hidden?'Unhide':'Hide'}</button>` : '';
   return `<span class="ip-cell"><span class="ip">${displaySafe||'—'}</span>${copyBtn}${eyeBtn}${delBtn}</span>`;
 }
 
@@ -1382,7 +1383,7 @@ function render(){
         ? `<input class="label-input" data-key="${escapeHtml(key)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
         : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
       const nameEye = admin
-        ? `<button class="icon-btn eye-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="${nameHidden?'unhide':'hide'} this row (PSN ID + IPs)">${nameHidden?'🙈':'👁'}</button>`
+        ? `<button class="icon-btn eye-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="${nameHidden?'unhide':'hide'} this row (PSN ID + IPs)">${nameHidden?'Unhide':'Hide'}</button>`
         : '';
       const allHistIds = u.history.flatMap(h=>h.ids);
       const nameEdit = admin
