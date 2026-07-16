@@ -1031,8 +1031,9 @@ function maskIp(ip){
 
 function countryCodeToFlag(code){
   if(!/^[A-Za-z]{2}$/.test(code)) return '';
-  const points = [...code.toUpperCase()].map(c => 127397 + c.charCodeAt(0));
-  return String.fromCodePoint(...points);
+  const hex = [...code.toUpperCase()].map(c => (127397 + c.charCodeAt(0)).toString(16)).join('-');
+  const url = `https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/72x72/${hex}.png`;
+  return `<img src="${url}" alt="${code.toUpperCase()}" class="flag-icon" style="width:1.2em;height:1.2em;vertical-align:-0.2em;" loading="lazy">`;
 }
 
 const COUNTRY_NAME_TO_CODE = {
