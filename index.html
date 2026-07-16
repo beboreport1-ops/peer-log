@@ -879,7 +879,9 @@ function normKey(k){
   const s = k.trim().toLowerCase();
   if(s.includes('user') || s.includes('player') || s.includes('name') || s.includes('gamertag') || s.includes('tag')) return 'username';
   if(s.includes('ip')) return 'ip';
-  if(s.includes('loc') || s.includes('country') || s.includes('city')) return 'location';
+  if(s.includes('city')) return 'city';
+  if(s.includes('country')) return 'country';
+  if(s.includes('loc')) return 'location';
   return s;
 }
 
@@ -892,13 +894,22 @@ function parseFile(file){
         const fieldMap = {};
         res.meta.fields.forEach(f => fieldMap[f] = normKey(f));
         const parsed = res.data.map(r => {
-          const out = {username:'', ip:'', location:''};
+          const out = {username:'', ip:'', location:'', city:'', country:''};
           Object.keys(r).forEach(k=>{
             const nk = fieldMap[k];
-            if(nk === 'username' || nk === 'ip' || nk === 'location'){
-              out[nk] = (r[k]||'').toString().trim();
+            const val = (r[k]||'').toString().trim();
+            if(nk === 'username' || nk === 'ip' || nk === 'location' || nk === 'city' || nk === 'country'){
+              out[nk] = val;
             }
           });
+          // Some exports (party-chat) give one combined "location" column.
+          // Others (traffic export) give separate City/Country columns —
+          // stitch those into the same "City, Country" shape either way.
+          if(!out.location){
+            out.location = (out.city && out.country) ? `${out.city}, ${out.country}` : (out.city || out.country || '');
+          }
+          delete out.city;
+          delete out.country;
           return out;
         }).filter(r => r.username || r.ip || r.location);
         resolve(parsed);
@@ -944,7 +955,7 @@ function buildGroups(){
       }
     } else if(r.ip || r.location){
       const key = r.ip + '|' + r.location;
-      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, count:0, lastIdx:r.idx, ids:[]});
+      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, count:0, lastIdx:r.idx, ids:[], labelKey:'unlabeled::'+key});
       const u = unlabeledMap.get(key);
       u.count++;
       u.ids.push(r.idx);
@@ -1016,6 +1027,19 @@ function maskIp(ip){
     return parts.map((p, i) => i===0 ? p : '*'.repeat(p.length)).join('.');
   }
   return '*'.repeat(ip.length);
+}
+
+function countryCodeToFlag(code){
+  if(!/^[A-Za-z]{2}$/.test(code)) return '';
+  const points = [...code.toUpperCase()].map(c => 127397 + c.charCodeAt(0));
+  return String.fromCodePoint(...points);
+}
+function locationCell(location){
+  if(!location) return '—';
+  const parts = location.split(',');
+  const last = parts[parts.length-1].trim();
+  const flag = countryCodeToFlag(last);
+  return flag ? `${flag} ${escapeHtml(location)}` : escapeHtml(location);
 }
 
 async function saveLabel(key, value){
@@ -1090,7 +1114,7 @@ function render(){
           <td>${labelCell}</td>
           <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameEye}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden:nameHidden, showEye:false})}</td>
-          <td>${escapeHtml(u.latestLocation)||'—'}
+          <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
           </td>
         </tr>`;
@@ -1101,7 +1125,7 @@ function render(){
               <td></td>
               <td></td>
               <td>${ipCell(h.ip, h.ids, {hidden:nameHidden, showEye:false})}</td>
-              <td>${escapeHtml(h.location)||'—'}${i===0?'<span class="hist-tag">latest</span>':''}</td>
+              <td>${locationCell(h.location)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
             </tr>`;
         });
       }
@@ -1161,15 +1185,21 @@ function render(){
         <p class="block-title"><span class="warn">⚠</span> No PSN ID <span class="n">(${filteredUnlabeled.length})</span></p>
         <p class="unlabeled-note">These entries had no PSN ID in the log — usually a peer that disconnected before OctoSniff could resolve one. Can't be merged into a player's history, shown separately.</p>
         <table>
-          <thead><tr><th>IP Address</th><th>Location</th><th>Times Seen</th></tr></thead>
+          <thead><tr><th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th></tr></thead>
           <tbody>
-            ${filteredUnlabeled.map(u=>`
+            ${filteredUnlabeled.map(u=>{
+              const labelInfo = labels.get(u.labelKey) || {label:'', hidden:false};
+              const labelCell = admin
+                ? `<input class="label-input" data-key="${escapeHtml(u.labelKey)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
+                : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
+              return `
               <tr>
+                <td>${labelCell}</td>
                 <td>${ipCell(u.ip, u.ids, {hidden: ipHidden.get(u.ip)||false, showEye:true})}</td>
-                <td>${escapeHtml(u.location)||'—'}</td>
+                <td>${locationCell(u.location)}</td>
                 <td>${u.count}</td>
               </tr>
-            `).join('')}
+            `;}).join('')}
           </tbody>
         </table>
       </section>
@@ -1242,7 +1272,8 @@ function exportFilteredCSV(){
     lines.push([labelVal, u.username, u.latestIp, u.latestLocation, u.history.length].map(csvEscape).join(','));
   });
   filteredUnlabeled.forEach(u=>{
-    lines.push(['', '', u.ip, u.location, u.count].map(csvEscape).join(','));
+    const labelVal = (labels.get(u.labelKey) || {}).label || '';
+    lines.push([labelVal, '', u.ip, u.location, u.count].map(csvEscape).join(','));
   });
 
   const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
