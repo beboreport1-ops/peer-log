@@ -657,6 +657,8 @@
   .chip-btn::after{content:"]";margin-left:2px;color:var(--phosphor-mute);opacity:.7;}
   .ip-cell{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .ip-cell .chip-btn{margin-left:0;}
+  .ip-actions,.uname-actions{display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;margin-left:2px;}
+  .uname-actions{margin-left:6px;}
   .chip-btn:hover{
     border-color:var(--phosphor);
     color:var(--phosphor);
@@ -2207,10 +2209,11 @@ function ipCell(ip, ids, opts={}){
   const displaySafe = escapeHtml(displayValue);
   const copySafe = escapeHtml(displayValue);
   const idsAttr = (ids||[]).join(',');
-  const copyBtn = ip ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${copySafe}" title="copy IP">CP</button>` : '';
+  const copyBtn = ip ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${copySafe}" title="copy IP" aria-label="copy IP">⧉</button>` : '';
   const delBtn = (isAdmin() && ids && ids.length) ? `<span class="chip-tip danger" data-tooltip="DELETE THIS IP"><button class="icon-btn del-btn chip-btn chip-icon chip-danger" data-ids="${idsAttr}" data-ip="${safe}" aria-label="delete this IP">×</button></span>` : '';
   const eyeBtn = (isAdmin() && showEye && ip) ? `<span class="chip-tip warn" data-tooltip="${hidden?'UNHIDE THIS IP':'HIDE THIS IP'}"><button class="icon-btn eye-btn chip-btn chip-warn" data-ip="${safe}" aria-label="${hidden?'unhide':'hide'} this IP">${hidden?'Show':'Hide'}</button></span>` : '';
-  return `<span class="ip-cell"><span class="ip">${displaySafe||'—'}</span>${copyBtn}${eyeBtn}${delBtn}</span>`;
+  const actions = (copyBtn||eyeBtn||delBtn) ? `<span class="ip-actions">${copyBtn}${eyeBtn}${delBtn}</span>` : '';
+  return `<span class="ip-cell"><span class="ip">${displaySafe||'—'}</span>${actions}</span>`;
 }
 
 function render(){
@@ -2268,7 +2271,7 @@ function render(){
         <tr class="main-row ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
           <td>${labelCell}</td>
-          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameEye}${nameEdit}</td>
+          <td><span class="caret">${multi?'▸':''}</span>${displayName}${(nameEye||nameEdit)?`<span class="uname-actions">${nameEye}${nameEdit}</span>`:''}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden:nameHidden, showEye:false})}</td>
           <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
