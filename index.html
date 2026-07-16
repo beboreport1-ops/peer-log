@@ -4,41 +4,41 @@
 <meta charset="UTF-8">
 <title>Peer Log Viewer</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-<style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
-    --bg:#f5f1ea;
-    --panel:#ffffff;
-    --panel-2:#faf6ef;
-    --line:#e6ded0;
-    --line-strong:#d6cbb8;
-    --text:#1c1a17;
-    --text-soft:#3d3833;
-    --dim:#8a8074;
-    --accent:#c2410c;       /* burnt amber */
-    --accent-soft:#f3ddc9;
-    --accent-dim:#e0a679;
-    --warn:#b45309;
-    --danger:#b91c1c;
-    --ok:#166534;
+    --bg:#0d1b2a;
+    --panel:#122536;
+    --panel-2:#0f2030;
+    --line:#1e3547;
+    --line-strong:#2b4a63;
+    --text:#e6f4ef;
+    --text-soft:#b8ccc4;
+    --dim:#6d8479;
+    --accent:#2dd4a8;         /* mint */
+    --accent-glow:#73ffb8;
+    --accent-soft:rgba(45,212,168,.12);
+    --accent-dim:#1a8f6f;
+    --warn:#fbbf24;
+    --danger:#f87171;
+    --ok:#4ade80;
     --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
     --display:'Space Grotesk','Inter',sans-serif;
     --mono:'JetBrains Mono','SFMono-Regular','Consolas',monospace;
     --radius:10px;
     --radius-sm:6px;
-    --shadow-sm:0 1px 2px rgba(28,26,23,.04);
-    --shadow-md:0 6px 24px -12px rgba(28,26,23,.18), 0 1px 2px rgba(28,26,23,.05);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.25);
+    --shadow-md:0 8px 30px -12px rgba(0,0,0,.55), 0 1px 2px rgba(0,0,0,.3);
   }
   *{box-sizing:border-box;}
   html,body{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
   body{
     margin:0;
     background:
-      radial-gradient(1200px 500px at 85% -10%, rgba(194,65,12,.06), transparent 60%),
-      radial-gradient(900px 400px at 0% 0%, rgba(194,65,12,.04), transparent 55%),
+      radial-gradient(1200px 500px at 85% -10%, rgba(45,212,168,.10), transparent 60%),
+      radial-gradient(900px 400px at 0% 0%, rgba(115,255,184,.06), transparent 55%),
       var(--bg);
     color:var(--text);
     font-family:var(--sans);
@@ -178,16 +178,16 @@
   .btn:active{transform:translateY(1px);}
   .btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   .btn.primary{
-    color:#fff;
+    color:var(--bg);
     background:var(--accent);
     border-color:var(--accent);
     font-weight:600;
   }
-  .btn.primary:hover{background:#a5350a;border-color:#a5350a;color:#fff;}
+  .btn.primary:hover{background:var(--accent-glow);border-color:var(--accent-glow);color:var(--bg);box-shadow:0 0 20px rgba(45,212,168,.35);}
   .btn.danger{color:var(--text-soft);}
-  .btn.danger:hover{border-color:var(--danger);color:var(--danger);background:#fdecec;}
+  .btn.danger:hover{border-color:var(--danger);color:var(--danger);background:rgba(248,113,113,.12);}
   .btn.warn{color:var(--text-soft);}
-  .btn.warn:hover{border-color:var(--warn);color:var(--warn);background:#fdf3e2;}
+  .btn.warn:hover{border-color:var(--warn);color:var(--warn);background:rgba(251,191,36,.12);}
   .btn:disabled{opacity:.45;cursor:default;transform:none;}
 
   .bulk-bar{
@@ -319,10 +319,10 @@
   .chip-btn.chip-ghost{background:transparent;border-style:dashed;}
   .chip-btn.chip-ghost:hover{border-style:solid;background:var(--panel-2);}
   .chip-btn.chip-accent{color:var(--accent);border-color:var(--accent-dim);background:var(--accent-soft);}
-  .chip-btn.chip-accent:hover{background:#eccdb1;color:var(--accent);border-color:var(--accent);}
-  .chip-btn.chip-warn:hover{color:var(--warn);border-color:var(--warn);background:#fdf3e2;}
-  .chip-btn.chip-danger:hover{color:var(--danger);border-color:var(--danger);background:#fdecec;}
-  .chip-btn.copied{color:var(--ok);border-color:#a3c9af;background:#e6f2ea;}
+  .chip-btn.chip-accent:hover{background:rgba(45,212,168,.2);color:var(--accent-glow);border-color:var(--accent);}
+  .chip-btn.chip-warn:hover{color:var(--warn);border-color:var(--warn);background:rgba(251,191,36,.12);}
+  .chip-btn.chip-danger:hover{color:var(--danger);border-color:var(--danger);background:rgba(248,113,113,.12);}
+  .chip-btn.copied{color:var(--ok);border-color:var(--ok);background:rgba(74,222,128,.14);}
 
   tr.unlabeled-row{cursor:pointer;}
   tr.unlabeled-row:hover td{background:var(--panel-2);}
@@ -334,16 +334,16 @@
     font-size:12px;
     color:var(--dim);
     border-bottom:1px solid var(--line);
-    background:var(--panel-2);
+    background:#0d1c2b;
   }
-  tr.hist-row.row-even td{background:var(--panel-2);}
-  tr.hist-row.row-odd td{background:#f2ecdf;}
+  tr.hist-row.row-even td{background:#0d1c2b;}
+  tr.hist-row.row-odd td{background:#0b1826;}
   tr.hist-row td.ip{color:var(--text-soft);}
   tr.hist-row.newest td{color:var(--text);}
   .hist-tag{
     font-size:9.5px;
     font-weight:600;
-    color:#fff;
+    color:var(--bg);
     background:var(--accent);
     padding:2px 7px;
     border-radius:999px;
@@ -373,16 +373,16 @@
   .warn{color:var(--warn);font-weight:500;}
 
   .unlabeled-table tbody tr:nth-child(even) td{background:var(--panel-2);}
-  .unlabeled-table tbody tr:hover td{background:#f2ecdf;}
+  .unlabeled-table tbody tr:hover td{background:#16283a;}
 
   .toast{
     position:fixed;
     bottom:28px;
     left:50%;
     transform:translateX(-50%) translateY(0);
-    background:var(--text);
-    border:1px solid var(--text);
-    color:var(--bg);
+    background:var(--panel);
+    border:1px solid var(--accent);
+    color:var(--accent-glow);
     padding:11px 20px;
     border-radius:999px;
     font-size:12.5px;
@@ -397,7 +397,7 @@
     box-shadow:0 10px 30px -10px rgba(28,26,23,.4);
   }
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-8px);}
-  .toast.err{background:var(--danger);border-color:var(--danger);color:#fff;}
+  .toast.err{background:var(--danger);border-color:var(--danger);color:var(--bg);}
 
   footer{
     margin-top:40px;
@@ -543,7 +543,6 @@
     table{font-size:12.5px;}
     thead th, tbody td{padding:9px 12px;}
   }
-</style>
 </style>
 </head>
 <body>
