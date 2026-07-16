@@ -1236,7 +1236,7 @@ function formatLastSeen(iso){
   if(!iso) return '—';
   const d = new Date(iso);
   if(isNaN(d.getTime())) return '—';
-  const short = d.toLocaleString(undefined, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+  const short = d.toLocaleString('en-US', {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
   return `<span title="${escapeHtml(d.toISOString())}">${escapeHtml(short)}</span>`;
 }
 function maskIp(ip){
@@ -1464,7 +1464,6 @@ function render(){
     unlabeledHolder.innerHTML = `
       <section class="block">
         <p class="block-title"><span class="warn">⚠</span> No PSN ID <span class="n">(${filteredUnlabeled.length})</span></p>
-        <p class="unlabeled-note">These entries had no PSN ID in the log — usually a peer that disconnected before OctoSniff could resolve one. Can't be merged into a player's history, shown separately.</p>
         <table class="unlabeled-table">
           <thead><tr>
             <th class="checkbox-col"><input type="checkbox" id="selectAllUnlabeled" ${allUnlabeledChecked?'checked':''}></th>
