@@ -207,8 +207,10 @@
   }
   tbody tr:last-child td{border-bottom:none;}
   tbody tr.main-row{cursor:pointer;}
-  tbody tr.main-row:hover{background:#0d1a15;}
-  tbody tr.main-row:hover td:nth-child(2){color:var(--accent);}
+  tbody tr.main-row.row-even{background:#0d1512;}
+  tbody tr.main-row.row-even:hover{background:#101d18;}
+  tbody tr.main-row.row-odd:hover{background:#0d1a15;}
+  tbody tr.main-row:hover td:nth-child(3){color:var(--accent);}
 
   .ip{color:#8fb5a8;}
   .label-input{
@@ -264,12 +266,13 @@
   tr.expanded .caret{transform:rotate(90deg);}
 
   tr.hist-row td{
-    background:#0c1512;
     padding:6px 14px 6px 34px;
     font-size:11.5px;
     color:var(--dim);
     border-bottom:1px solid #101a17;
   }
+  tr.hist-row.row-even td{background:#0e1815;}
+  tr.hist-row.row-odd td{background:#0a120f;}
   tr.hist-row td.ip{color:#6f9b8b;}
   tr.hist-row.newest td{color:#a9c9bf;}
   .hist-tag{
@@ -300,6 +303,9 @@
     line-height:1.5;
   }
   .warn{color:var(--warn);}
+
+  .unlabeled-table tbody tr:nth-child(even) td{background:#0d1512;}
+  .unlabeled-table tbody tr:hover td{background:#0d1a15;}
 
   .toast{
     position:fixed;
@@ -1278,10 +1284,11 @@ function render(){
     const th = (key,label) => `<th class="${sortKey===key?'sorted':''}" data-key="${key}">${label}${arrow(key)}</th>`;
 
     let rowsHtml = '';
-    list.forEach(u => {
+    list.forEach((u, uIdx) => {
       const key = u.username.toLowerCase();
       const isExpanded = expanded.has(key);
       const multi = u.history.length > 1;
+      const parity = uIdx % 2 === 0 ? 'row-even' : 'row-odd';
       const labelInfo = labels.get(key) || {label:'', hidden:false};
       const nameHidden = labelInfo.hidden;
       const displayName = escapeHtml(nameHidden ? maskUsername(u.username) : u.username);
@@ -1294,7 +1301,7 @@ function render(){
       const uSelKey = userSelKey(u);
       const rowChecked = selected.has(uSelKey) ? 'checked' : '';
       rowsHtml += `
-        <tr class="main-row ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
+        <tr class="main-row ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
           <td>${labelCell}</td>
           <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameEye}</td>
@@ -1306,7 +1313,7 @@ function render(){
       if(isExpanded){
         u.history.forEach((h, i) => {
           rowsHtml += `
-            <tr class="hist-row ${i===0?'newest':''}">
+            <tr class="hist-row ${parity} ${i===0?'newest':''}">
               <td></td>
               <td></td>
               <td></td>
@@ -1395,7 +1402,7 @@ function render(){
       <section class="block">
         <p class="block-title"><span class="warn">⚠</span> No PSN ID <span class="n">(${filteredUnlabeled.length})</span></p>
         <p class="unlabeled-note">These entries had no PSN ID in the log — usually a peer that disconnected before OctoSniff could resolve one. Can't be merged into a player's history, shown separately.</p>
-        <table>
+        <table class="unlabeled-table">
           <thead><tr>
             <th class="checkbox-col"><input type="checkbox" id="selectAllUnlabeled" ${allUnlabeledChecked?'checked':''}></th>
             <th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th>
