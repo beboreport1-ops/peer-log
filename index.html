@@ -133,15 +133,19 @@
     text-transform:uppercase;
     border-radius:2px;
     cursor:pointer;
-    transition:.15s;
+    transition:.15s ease;
     white-space:nowrap;
   }
   .btn:hover{border-color:var(--accent-dim);color:var(--accent);}
+  .btn:active{transform:scale(.97);}
+  .btn:focus-visible{outline:1px solid var(--accent-dim);outline-offset:2px;}
   .btn.primary{color:var(--accent);border-color:var(--accent-dim);}
   .btn.primary:hover{background:rgba(57,255,157,0.08);}
   .btn.danger{color:var(--dim);}
   .btn.danger:hover{border-color:var(--danger);color:var(--danger);background:rgba(255,97,97,0.06);}
-  .btn:disabled{opacity:.5;cursor:default;}
+  .btn.warn{color:var(--dim);}
+  .btn.warn:hover{border-color:var(--warn);color:var(--warn);background:rgba(255,180,84,0.08);}
+  .btn:disabled{opacity:.5;cursor:default;transform:none;}
 
   .bulk-bar{
     display:flex;
@@ -232,53 +236,39 @@
   .label-static{color:var(--dim);font-size:12px;padding:5px 7px;display:block;}
 
   .ip-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-  .icon-btn{
-    background:none;
-    border:none;
-    color:var(--dim);
-    cursor:pointer;
-    font-size:12px;
-    padding:1px 4px;
-    border-radius:3px;
-    line-height:1;
-    opacity:.6;
-    transition:.12s;
-  }
-  .icon-btn:hover{opacity:1;color:var(--accent);background:rgba(57,255,157,0.08);}
-  .icon-btn.copied{color:var(--accent);opacity:1;}
-  .icon-btn.del-btn:hover{color:var(--danger);background:rgba(255,97,97,0.1);}
-  .icon-btn.eye-btn:hover{color:var(--warn);background:rgba(255,180,84,0.1);}
-  .icon-btn.eye-btn{border:1px solid var(--line);border-radius:20px;padding:2px 8px;font-size:10px;letter-spacing:.02em;margin-left:4px;}
 
-  .badge{
-    display:inline-block;
-    font-size:10px;
-    letter-spacing:.03em;
-    color:var(--accent);
-    border:1px solid var(--accent-dim);
-    background:rgba(57,255,157,0.06);
-    padding:2px 7px;
-    border-radius:20px;
-    margin-left:8px;
-    cursor:pointer;
-    white-space:nowrap;
-  }
-  .badge:hover{background:rgba(57,255,157,0.14);}
-  .add-psn-btn{
-    display:inline-block;
+  /* ---------- unified inline "chip" buttons: copy / delete / hide / edit / add / +N more ---------- */
+  .icon-btn{ } /* marker class only, kept for click-target exclusion in JS — visuals live in .chip-btn */
+  .chip-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:3px;
+    font-family:var(--mono);
     font-size:10px;
     letter-spacing:.02em;
+    line-height:1.3;
     color:var(--dim);
-    background:none;
-    border:1px dashed var(--line);
+    background:rgba(255,255,255,0.02);
+    border:1px solid var(--line);
     padding:3px 8px;
     border-radius:20px;
-    margin-left:6px;
     cursor:pointer;
     white-space:nowrap;
-    font-family:var(--mono);
+    transition:.12s ease;
+    margin-left:6px;
   }
-  .add-psn-btn:hover{color:var(--accent);border-color:var(--accent-dim);border-style:solid;background:rgba(57,255,157,0.06);}
+  .ip-cell .chip-btn{margin-left:0;}
+  .chip-btn:hover{border-color:var(--accent-dim);color:var(--accent);background:rgba(57,255,157,0.08);}
+  .chip-btn:active{transform:scale(.95);}
+  .chip-btn.chip-icon{padding:3px 7px;font-size:11px;}
+  .chip-btn.chip-ghost{background:none;border-style:dashed;}
+  .chip-btn.chip-ghost:hover{border-style:solid;}
+  .chip-btn.chip-accent{color:var(--accent);border-color:var(--accent-dim);background:rgba(57,255,157,0.06);}
+  .chip-btn.chip-accent:hover{background:rgba(57,255,157,0.14);}
+  .chip-btn.chip-warn:hover{color:var(--warn);border-color:#5a4520;background:rgba(255,180,84,0.1);}
+  .chip-btn.chip-danger:hover{color:var(--danger);border-color:#5a2020;background:rgba(255,97,97,0.1);}
+  .chip-btn.copied{color:var(--accent);border-color:var(--accent-dim);background:rgba(57,255,157,0.08);}
+
   tr.unlabeled-row{cursor:pointer;}
   tr.unlabeled-row:hover td{background:#0d1a15;}
   .caret{display:inline-block;transition:transform .12s;margin-right:6px;color:var(--dim);}
@@ -501,7 +491,7 @@
   <div class="bulk-bar" id="bulkBar" style="display:none;">
     <span class="count" id="bulkCount">0 selected</span>
     <button class="btn" id="bulkExportBtn">Export Selected</button>
-    <button class="btn" id="bulkHideBtn" style="display:none;">Hide Selected</button>
+    <button class="btn warn" id="bulkHideBtn" style="display:none;">Hide Selected</button>
     <button class="btn" id="bulkUnhideBtn" style="display:none;">Unhide Selected</button>
     <button class="btn danger" id="bulkDeleteBtn" style="display:none;">Delete Selected</button>
     <button class="btn" id="bulkClearBtn">Clear</button>
@@ -1334,9 +1324,9 @@ function ipCell(ip, ids, opts={}){
   const displaySafe = escapeHtml(displayValue);
   const copySafe = escapeHtml(displayValue);
   const idsAttr = (ids||[]).join(',');
-  const copyBtn = ip ? `<button class="icon-btn copy-btn" data-copy="${copySafe}" title="copy IP">⧉</button>` : '';
-  const delBtn = (isAdmin() && ids && ids.length) ? `<button class="icon-btn del-btn" data-ids="${idsAttr}" data-ip="${safe}" title="delete this IP">🗑</button>` : '';
-  const eyeBtn = (isAdmin() && showEye && ip) ? `<button class="icon-btn eye-btn" data-ip="${safe}" title="${hidden?'unhide':'hide'} this IP">${hidden?'Unhide':'Hide'}</button>` : '';
+  const copyBtn = ip ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${copySafe}" title="copy IP">⧉</button>` : '';
+  const delBtn = (isAdmin() && ids && ids.length) ? `<button class="icon-btn del-btn chip-btn chip-icon chip-danger" data-ids="${idsAttr}" data-ip="${safe}" title="delete this IP">🗑</button>` : '';
+  const eyeBtn = (isAdmin() && showEye && ip) ? `<button class="icon-btn eye-btn chip-btn chip-warn" data-ip="${safe}" title="${hidden?'unhide':'hide'} this IP">${hidden?'Unhide':'Hide'}</button>` : '';
   return `<span class="ip-cell"><span class="ip">${displaySafe||'—'}</span>${copyBtn}${eyeBtn}${delBtn}</span>`;
 }
 
@@ -1383,11 +1373,11 @@ function render(){
         ? `<input class="label-input" data-key="${escapeHtml(key)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
         : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
       const nameEye = admin
-        ? `<button class="icon-btn eye-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="${nameHidden?'unhide':'hide'} this row (PSN ID + IPs)">${nameHidden?'Unhide':'Hide'}</button>`
+        ? `<button class="icon-btn eye-btn chip-btn chip-warn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="${nameHidden?'unhide':'hide'} this row (PSN ID + IPs)">${nameHidden?'Unhide':'Hide'}</button>`
         : '';
       const allHistIds = u.history.flatMap(h=>h.ids);
       const nameEdit = admin
-        ? `<button class="icon-btn edit-psn-btn" data-ids="${allHistIds.join(',')}" data-uname="${escapeHtml(u.username)}" title="edit PSN ID">✎</button>`
+        ? `<button class="icon-btn edit-psn-btn chip-btn chip-icon" data-ids="${allHistIds.join(',')}" data-uname="${escapeHtml(u.username)}" title="edit PSN ID">✎</button>`
         : '';
       const uSelKey = userSelKey(u);
       const rowChecked = selected.has(uSelKey) ? 'checked' : '';
@@ -1398,7 +1388,7 @@ function render(){
           <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameEye}${nameEdit}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden:nameHidden, showEye:false})}</td>
           <td>${locationCell(u.latestLocation)}
-            ${multi?`<span class="badge" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
+            ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
           </td>
           <td class="last-seen">${formatLastSeen(u.latestAddedAt)}</td>
         </tr>`;
@@ -1504,7 +1494,7 @@ function render(){
             ${filteredUnlabeled.map(u=>{
               const labelInfo = labels.get(u.labelKey) || {label:'', hidden:false};
               const labelCell = admin
-                ? `<input class="label-input" data-key="${escapeHtml(u.labelKey)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label"><button class="add-psn-btn" data-ids="${u.ids.join(',')}" data-ip="${escapeHtml(u.ip)}" title="assign a PSN ID to this IP">+ add PSN ID</button>`
+                ? `<input class="label-input" data-key="${escapeHtml(u.labelKey)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label"><button class="add-psn-btn chip-btn chip-ghost" data-ids="${u.ids.join(',')}" data-ip="${escapeHtml(u.ip)}" title="assign a PSN ID to this IP">+ add PSN ID</button>`
                 : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
               const uSelKey = unlabeledSelKey(u);
               const rowChecked = selected.has(uSelKey) ? 'checked' : '';
