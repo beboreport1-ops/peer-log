@@ -213,6 +213,7 @@
   tbody tr.main-row:hover td:nth-child(3){color:var(--accent);}
 
   .ip{color:#8fb5a8;}
+  .last-seen{color:var(--dim);font-size:11.5px;white-space:nowrap;}
   .label-input{
     width:100%;
     min-width:70px;
@@ -262,6 +263,23 @@
     white-space:nowrap;
   }
   .badge:hover{background:rgba(57,255,157,0.14);}
+  .add-psn-btn{
+    display:inline-block;
+    font-size:10px;
+    letter-spacing:.02em;
+    color:var(--dim);
+    background:none;
+    border:1px dashed var(--line);
+    padding:3px 8px;
+    border-radius:20px;
+    margin-left:6px;
+    cursor:pointer;
+    white-space:nowrap;
+    font-family:var(--mono);
+  }
+  .add-psn-btn:hover{color:var(--accent);border-color:var(--accent-dim);border-style:solid;background:rgba(57,255,157,0.06);}
+  tr.unlabeled-row{cursor:pointer;}
+  tr.unlabeled-row:hover td{background:#0d1a15;}
   .caret{display:inline-block;transition:transform .12s;margin-right:6px;color:var(--dim);}
   tr.expanded .caret{transform:rotate(90deg);}
 
@@ -441,7 +459,8 @@
   .modal-actions{display:flex;gap:8px;justify-content:flex-end;}
 
   @media (max-width:520px){
-    thead th:nth-child(5), tbody td:nth-child(5){display:none;}
+    thead th:nth-child(5), tbody td:nth-child(5),
+    thead th:nth-child(6), tbody td:nth-child(6){display:none;}
     .label-input{min-width:50px;font-size:11px;}
   }
 </style>
@@ -613,13 +632,18 @@ async function sbFetch(path, options={}){
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
-const loadAllRows = () => sbFetch('peer_rows?select=id,username,ip,location&order=id.asc');
+const loadAllRows = () => sbFetch('peer_rows?select=id,username,ip,location,created_at&order=id.asc');
 const insertRows = (rows) => sbFetch('peer_rows', {
   method:'POST',
   headers:{'Prefer':'return=minimal'},
   body: JSON.stringify(rows)
 });
 const deleteRowsByIds = (ids) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`, {method:'DELETE'});
+const updateRowsUsername = (ids, username) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`, {
+  method:'PATCH',
+  headers:{'Prefer':'return=minimal'},
+  body: JSON.stringify({username})
+});
 const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden');
 const saveLabelRemote = (usernameKey, label, hidden) => sbFetch('peer_labels?on_conflict=username_key', {
   method:'POST',
@@ -647,7 +671,7 @@ function openModal({title, fields=[], submitLabel='Confirm', danger=false, onSub
       <div class="modal-box">
         <h3>${title}</h3>
         <div class="modal-fields">
-          ${fields.map(f=>`<label class="modal-label">${f.label}<input class="modal-input" type="${f.type||'text'}" data-field="${f.id}" autocomplete="off"></label>`).join('')}
+          ${fields.map(f=>`<label class="modal-label">${f.label}<input class="modal-input" type="${f.type||'text'}" data-field="${f.id}" value="${f.value?escapeHtml(f.value):''}" autocomplete="off"></label>`).join('')}
         </div>
         <p class="modal-error"></p>
         <div class="modal-actions">
@@ -660,7 +684,7 @@ function openModal({title, fields=[], submitLabel='Confirm', danger=false, onSub
     const submitBtn = overlay.querySelector('.modal-submit');
     const cancelBtn = overlay.querySelector('.modal-cancel');
     const inputs = [...overlay.querySelectorAll('.modal-input')];
-    if(inputs[0]) setTimeout(()=>inputs[0].focus(), 30);
+    if(inputs[0]) setTimeout(()=>{ inputs[0].focus(); inputs[0].select(); }, 30);
 
     function close(result){ overlay.remove(); resolve(result); }
     function collect(){
@@ -882,12 +906,33 @@ async function promptToggleUsernameHidden(key, displayName){
   });
 }
 
+async function promptAssignUsername({ids, currentUsername='', title, submitLabel='Save'}){
+  if(!isAdmin() || !ids || !ids.length) return;
+  await openModal({
+    title,
+    fields: [{id:'psnid', label:'PSN ID', type:'text', value:currentUsername}],
+    submitLabel,
+    onSubmit: async (vals) => {
+      const val = (vals.psnid||'').trim();
+      if(!val) return {ok:false, message:'Enter a PSN ID'};
+      try{
+        await updateRowsUsername(ids, val);
+        await refreshFromCloud();
+        showToast(`set PSN ID to ${val}`);
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message:'Update failed — check connection'};
+      }
+    }
+  });
+}
+
 // ---------- data loading ----------
 async function refreshFromCloud(){
   setSyncStatus('syncing', 'syncing...');
   try{
     const [data, labelData, ipHiddenData] = await Promise.all([loadAllRows(), loadLabels(), loadIpHidden()]);
-    rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id}));
+    rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id, addedAt:r.created_at||''}));
     labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden}]));
     ipHidden = new Map((ipHiddenData||[]).map(r => [r.ip, !!r.hidden]));
     buildGroups();
@@ -990,27 +1035,30 @@ function buildGroups(){
       if(existing){
         existing.location = r.location;
         existing.idx = r.idx;
+        existing.addedAt = r.addedAt;
         existing.ids.push(r.idx);
       } else {
-        g.ipMap.set(r.ip, {location:r.location, idx:r.idx, ids:[r.idx]});
+        g.ipMap.set(r.ip, {location:r.location, idx:r.idx, addedAt:r.addedAt, ids:[r.idx]});
       }
     } else if(r.ip || r.location){
       const key = r.ip + '|' + r.location;
-      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, count:0, lastIdx:r.idx, ids:[], labelKey:'unlabeled::'+key});
+      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, count:0, lastIdx:r.idx, addedAt:r.addedAt, ids:[], labelKey:'unlabeled::'+key});
       const u = unlabeledMap.get(key);
       u.count++;
       u.ids.push(r.idx);
       u.lastIdx = Math.max(u.lastIdx, r.idx);
+      u.addedAt = r.addedAt;
     }
   });
 
   users = [...map.values()].map(g => {
-    const history = [...g.ipMap.entries()].map(([ip, v]) => ({ip, location:v.location, idx:v.idx, ids:v.ids}));
+    const history = [...g.ipMap.entries()].map(([ip, v]) => ({ip, location:v.location, idx:v.idx, addedAt:v.addedAt, ids:v.ids}));
     history.sort((a,b) => b.idx - a.idx);
     return {
       username: g.username,
       latestIp: history[0].ip,
       latestLocation: history[0].location,
+      latestAddedAt: history[0].addedAt,
       history
     };
   });
@@ -1052,14 +1100,14 @@ function renderBulkBar(){
 }
 
 function buildCsvLines(userList, unlabeledList){
-  const lines = [['Label','PSN ID','IP','Location','IP History Count'].map(csvEscape).join(',')];
+  const lines = [['Label','PSN ID','IP','Location','IP History Count','Last Seen'].map(csvEscape).join(',')];
   userList.forEach(u=>{
     const labelVal = (labels.get(u.username.toLowerCase()) || {}).label || '';
-    lines.push([labelVal, u.username, u.latestIp, u.latestLocation, u.history.length].map(csvEscape).join(','));
+    lines.push([labelVal, u.username, u.latestIp, u.latestLocation, u.history.length, u.latestAddedAt||''].map(csvEscape).join(','));
   });
   unlabeledList.forEach(u=>{
     const labelVal = (labels.get(u.labelKey) || {}).label || '';
-    lines.push([labelVal, '', u.ip, u.location, u.count].map(csvEscape).join(','));
+    lines.push([labelVal, '', u.ip, u.location, u.count, u.addedAt||''].map(csvEscape).join(','));
   });
   return lines;
 }
@@ -1184,6 +1232,13 @@ function maskUsername(name){
   if(!name) return name;
   return name.slice(0,2) + '••••';
 }
+function formatLastSeen(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '—';
+  const short = d.toLocaleString(undefined, {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
+  return `<span title="${escapeHtml(d.toISOString())}">${escapeHtml(short)}</span>`;
+}
 function maskIp(ip){
   if(!ip) return ip;
   const parts = ip.split('.');
@@ -1263,6 +1318,7 @@ function render(){
     let va, vb;
     if(sortKey==='ip'){ va=a.latestIp.toLowerCase(); vb=b.latestIp.toLowerCase(); }
     else if(sortKey==='location'){ va=a.latestLocation.toLowerCase(); vb=b.latestLocation.toLowerCase(); }
+    else if(sortKey==='lastSeen'){ va=a.latestAddedAt||''; vb=b.latestAddedAt||''; }
     else { va=a.username.toLowerCase(); vb=b.username.toLowerCase(); }
     if(va<vb) return -1*sortDir;
     if(va>vb) return 1*sortDir;
@@ -1298,17 +1354,22 @@ function render(){
       const nameEye = admin
         ? `<button class="icon-btn eye-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="${nameHidden?'unhide':'hide'} this row (PSN ID + IPs)">${nameHidden?'🙈':'👁'}</button>`
         : '';
+      const allHistIds = u.history.flatMap(h=>h.ids);
+      const nameEdit = admin
+        ? `<button class="icon-btn edit-psn-btn" data-ids="${allHistIds.join(',')}" data-uname="${escapeHtml(u.username)}" title="edit PSN ID">✎</button>`
+        : '';
       const uSelKey = userSelKey(u);
       const rowChecked = selected.has(uSelKey) ? 'checked' : '';
       rowsHtml += `
         <tr class="main-row ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
           <td>${labelCell}</td>
-          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameEye}</td>
+          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameEye}${nameEdit}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden:nameHidden, showEye:false})}</td>
           <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
           </td>
+          <td class="last-seen">${formatLastSeen(u.latestAddedAt)}</td>
         </tr>`;
       if(isExpanded){
         u.history.forEach((h, i) => {
@@ -1319,6 +1380,7 @@ function render(){
               <td></td>
               <td>${ipCell(h.ip, h.ids, {hidden:nameHidden, showEye:false})}</td>
               <td>${locationCell(h.location)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
+              <td class="last-seen">${formatLastSeen(h.addedAt)}</td>
             </tr>`;
         });
       }
@@ -1335,6 +1397,7 @@ function render(){
           ${th('username','PSN ID')}
           ${th('ip','Latest IP')}
           ${th('location','Latest Location')}
+          ${th('lastSeen','Last Seen')}
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
@@ -1405,23 +1468,24 @@ function render(){
         <table class="unlabeled-table">
           <thead><tr>
             <th class="checkbox-col"><input type="checkbox" id="selectAllUnlabeled" ${allUnlabeledChecked?'checked':''}></th>
-            <th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th>
+            <th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th><th>Last Seen</th>
           </tr></thead>
           <tbody>
             ${filteredUnlabeled.map(u=>{
               const labelInfo = labels.get(u.labelKey) || {label:'', hidden:false};
               const labelCell = admin
-                ? `<input class="label-input" data-key="${escapeHtml(u.labelKey)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
+                ? `<input class="label-input" data-key="${escapeHtml(u.labelKey)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label"><button class="add-psn-btn" data-ids="${u.ids.join(',')}" data-ip="${escapeHtml(u.ip)}" title="assign a PSN ID to this IP">+ add PSN ID</button>`
                 : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
               const uSelKey = unlabeledSelKey(u);
               const rowChecked = selected.has(uSelKey) ? 'checked' : '';
               return `
-              <tr>
+              <tr class="${admin?'unlabeled-row':''}" data-ids="${u.ids.join(',')}" data-ip="${escapeHtml(u.ip)}">
                 <td class="checkbox-col"><input type="checkbox" class="row-check unlabeled-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
                 <td>${labelCell}</td>
                 <td>${ipCell(u.ip, u.ids, {hidden: ipHidden.get(u.ip)||false, showEye:true})}</td>
                 <td>${locationCell(u.location)}</td>
                 <td>${u.count}</td>
+                <td class="last-seen">${formatLastSeen(u.addedAt)}</td>
               </tr>
             `;}).join('')}
           </tbody>
@@ -1445,6 +1509,30 @@ function render(){
         if(sa) sa.checked = allUnlabeledSelKeys.every(kk=>selected.has(kk));
       });
     });
+
+    if(admin){
+      const openAddPsn = (tr) => {
+        const ids = tr.dataset.ids.split(',').filter(Boolean).map(Number);
+        promptAssignUsername({
+          ids,
+          currentUsername: '',
+          title: `Add PSN ID for ${tr.dataset.ip}`,
+          submitLabel: 'Add PSN ID'
+        });
+      };
+      unlabeledHolder.querySelectorAll('.add-psn-btn').forEach(btn=>{
+        btn.addEventListener('click', e=>{
+          e.stopPropagation();
+          openAddPsn(btn.closest('tr'));
+        });
+      });
+      unlabeledHolder.querySelectorAll('.unlabeled-row').forEach(tr=>{
+        tr.addEventListener('click', e=>{
+          if(e.target.closest('.icon-btn') || e.target.closest('.label-input') || e.target.closest('.row-check') || e.target.closest('.add-psn-btn')) return;
+          openAddPsn(tr);
+        });
+      });
+    }
   }
 
   renderBulkBar();
@@ -1486,6 +1574,18 @@ function render(){
         } else if(btn.dataset.ip !== undefined){
           promptToggleIpHidden(btn.dataset.ip);
         }
+      });
+    });
+    document.querySelectorAll('.edit-psn-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const ids = btn.dataset.ids.split(',').filter(Boolean).map(Number);
+        promptAssignUsername({
+          ids,
+          currentUsername: btn.dataset.uname,
+          title: `Edit PSN ID for ${btn.dataset.uname}`,
+          submitLabel: 'Save'
+        });
       });
     });
   }
