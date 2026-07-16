@@ -489,6 +489,8 @@
     <p>expects columns: PSN ID (username/player), IP, location — synced to the cloud; if you're offline it queues and syncs automatically once you're back online</p>
   </label>
 
+  <button class="btn" id="addRowBtn" style="display:none;margin-bottom:14px;">+ Add row manually</button>
+
   <div class="toolbar" id="toolbar" style="display:none;">
     <input class="search" id="search" placeholder="filter by PSN ID, ip, or location...">
     <button class="btn primary" id="exportBtn">Export filtered CSV</button>
@@ -534,6 +536,7 @@ let role = null;           // 'view' | 'admin'
 const appEl = document.getElementById('app');
 const gateScreenEl = document.getElementById('gateScreen');
 const dropzone = document.getElementById('dropzone');
+const addRowBtn = document.getElementById('addRowBtn');
 const fileInput = document.getElementById('fileInput');
 const toolbar = document.getElementById('toolbar');
 const search = document.getElementById('search');
@@ -817,6 +820,7 @@ async function showApp(){
   roleTag.textContent = isAdmin() ? 'admin' : 'viewer';
   roleTag.className = 'role-tag' + (isAdmin() ? ' admin' : '');
   dropzone.style.display = isAdmin() ? 'block' : 'none';
+  addRowBtn.style.display = isAdmin() ? 'inline-block' : 'none';
   changePassBtn.style.display = isAdmin() ? 'inline-block' : 'none';
 
   if(isAdmin() && getPendingRows().length){
@@ -1020,6 +1024,32 @@ async function handleFiles(files){
   showToast(`queued ${allNewRows.length} row${allNewRows.length>1?'s':''}`);
   await flushPendingUploads();
 }
+
+async function openAddRowManual(){
+  if(!isAdmin()) return;
+  await openModal({
+    title: 'Add row manually',
+    fields: [
+      {id:'username', label:'PSN ID (leave blank if unknown)'},
+      {id:'ip', label:'IP address'},
+      {id:'location', label:'Location (e.g. City, Country)'}
+    ],
+    submitLabel: 'Add row',
+    onSubmit: async (vals) => {
+      const username = (vals.username||'').trim();
+      const ip = (vals.ip||'').trim();
+      const location = (vals.location||'').trim();
+      if(!username && !ip && !location) return {ok:false, message:'Fill in at least one field'};
+      const pending = getPendingRows();
+      pending.push({username, ip, location});
+      setPendingRows(pending);
+      showToast('queued 1 row');
+      await flushPendingUploads();
+      return {ok:true};
+    }
+  });
+}
+addRowBtn.addEventListener('click', openAddRowManual);
 
 function buildGroups(){
   const map = new Map();
