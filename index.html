@@ -709,6 +709,7 @@
     box-shadow:inset 0 0 0 1px rgba(234,179,8,.4), inset 0 1px 0 rgba(0,0,0,.35);
   }
   .chip-btn.chip-danger{color:var(--danger);border-color:rgba(239,68,68,.35);}
+  .chip-btn.chip-danger::before,.chip-btn.chip-danger::after{color:var(--danger);opacity:1;}
   .chip-btn.chip-danger:hover{color:var(--danger);border-color:var(--danger);background:rgba(239,68,68,.1);box-shadow:0 0 8px rgba(239,68,68,.25);}
   .chip-btn.chip-danger:hover::before,.chip-btn.chip-danger:hover::after{color:var(--danger);}
   .chip-btn.chip-danger:focus-visible{
@@ -725,6 +726,8 @@
     background:rgba(239,68,68,.2);
     box-shadow:inset 0 0 0 1px rgba(239,68,68,.45), inset 0 1px 0 rgba(0,0,0,.35);
   }
+  .chip-btn.chip-danger:active::before,.chip-btn.chip-danger.is-active::before,
+  .chip-btn.chip-danger:active::after,.chip-btn.chip-danger.is-active::after{color:var(--danger);}
   .chip-btn.copied{color:var(--phosphor);border-color:var(--phosphor);background:rgba(34,197,94,.15);box-shadow:0 0 10px rgba(34,197,94,.4);}
   .chip-btn.copied::before,.chip-btn.copied::after{color:var(--phosphor);opacity:1;}
   .icon-btn:hover{
