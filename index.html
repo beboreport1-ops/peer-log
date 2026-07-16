@@ -627,7 +627,8 @@
   .label-static{color:var(--dim);font-size:12px;padding:5px 8px;display:block;font-style:italic;}
   .label-static::before{content:"~ ";color:var(--phosphor-faint);}
 
-  .ip-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .ip-cell{display:flex;flex-direction:column;align-items:flex-start;gap:4px;}
+  .ip-line{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
 
   /* ==== chip buttons — bracketed tokens ==== */
   .chip-btn{
@@ -655,9 +656,9 @@
   }
   .chip-btn::before{content:"[";margin-right:2px;color:var(--phosphor-mute);opacity:.7;}
   .chip-btn::after{content:"]";margin-left:2px;color:var(--phosphor-mute);opacity:.7;}
-  .ip-cell{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .ip-cell .chip-btn{margin-left:0;}
-  .ip-actions,.uname-actions{display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;margin-left:2px;}
+  .ip-actions,.uname-actions{display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;}
+  .ip-actions{margin-top:2px;}
   .uname-actions{margin-left:6px;}
   .chip-btn:hover{
     border-color:var(--phosphor);
@@ -2210,10 +2211,10 @@ function ipCell(ip, ids, opts={}){
   const copySafe = escapeHtml(displayValue);
   const idsAttr = (ids||[]).join(',');
   const copyBtn = ip ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${copySafe}" title="copy IP" aria-label="copy IP">⧉</button>` : '';
-  const delBtn = (isAdmin() && ids && ids.length) ? `<span class="chip-tip danger" data-tooltip="DELETE THIS IP"><button class="icon-btn del-btn chip-btn chip-icon chip-danger" data-ids="${idsAttr}" data-ip="${safe}" aria-label="delete this IP">×</button></span>` : '';
+  const delBtn = (isAdmin() && ids && ids.length) ? `<span class="chip-tip danger" data-tooltip="DELETE THIS IP"><button class="icon-btn del-btn chip-btn chip-danger" data-ids="${idsAttr}" data-ip="${safe}" aria-label="delete this IP">delete</button></span>` : '';
   const eyeBtn = (isAdmin() && showEye && ip) ? `<span class="chip-tip warn" data-tooltip="${hidden?'UNHIDE THIS IP':'HIDE THIS IP'}"><button class="icon-btn eye-btn chip-btn chip-warn" data-ip="${safe}" aria-label="${hidden?'unhide':'hide'} this IP">${hidden?'Show':'Hide'}</button></span>` : '';
-  const actions = (copyBtn||eyeBtn||delBtn) ? `<span class="ip-actions">${copyBtn}${eyeBtn}${delBtn}</span>` : '';
-  return `<span class="ip-cell"><span class="ip">${displaySafe||'—'}</span>${actions}</span>`;
+  const actions = (eyeBtn||delBtn) ? `<span class="ip-actions">${eyeBtn}${delBtn}</span>` : '';
+  return `<span class="ip-cell"><span class="ip-line"><span class="ip">${displaySafe||'—'}</span>${copyBtn}</span>${actions}</span>`;
 }
 
 function render(){
