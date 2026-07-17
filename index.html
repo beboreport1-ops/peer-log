@@ -576,6 +576,14 @@
     font-size:12px;
     font-family:var(--mono);
   }
+  .main-table{table-layout:fixed;}
+  .main-table .checkbox-col{width:34px;}
+  .main-table thead th:nth-child(2), .main-table tbody td:nth-child(2){width:14%;}
+  .main-table thead th:nth-child(3), .main-table tbody td:nth-child(3){width:30%;}
+  .main-table thead th:nth-child(4), .main-table tbody td:nth-child(4){width:16%;}
+  .main-table thead th:nth-child(5), .main-table tbody td:nth-child(5){width:26%;}
+  .main-table thead th:nth-child(6), .main-table tbody td:nth-child(6){width:14%;}
+  .main-table td:nth-child(3){overflow-wrap:break-word;}
   thead th{
     text-align:left;
     padding:11px 14px;
@@ -800,15 +808,25 @@
   .caret::before{content:"▸";}
   tr.expanded .caret{transform:rotate(90deg);color:var(--phosphor);text-shadow:0 0 6px var(--phosphor);}
 
+  @keyframes rowFadeIn{
+    from{opacity:0;transform:translateY(-3px);}
+    to{opacity:1;transform:translateY(0);}
+  }
+  tr.hist-row{animation:rowFadeIn .16s ease-out;}
+  .uname-actions{animation:rowFadeIn .14s ease-out;}
+
   tr.hist-row td{
-    padding:6px 14px 6px 38px;
+    padding:6px 14px;
     font-size:11px;
     color:var(--phosphor-mute);
     border-bottom:1px solid rgba(34,197,94,.05);
     background:rgba(0,0,0,.35);
+  }
+  tr.hist-row td:nth-child(4){
+    padding-left:38px;
     position:relative;
   }
-  tr.hist-row td::before{
+  tr.hist-row td:nth-child(4)::before{
     content:"└─";
     position:absolute;
     left:20px;
@@ -1308,6 +1326,11 @@
     .count b{font-size:17px;}
     thead th:nth-child(5), tbody td:nth-child(5),
     thead th:nth-child(6), tbody td:nth-child(6){display:none;}
+    .main-table{table-layout:fixed;}
+    .main-table .checkbox-col{width:28px;}
+    .main-table thead th:nth-child(2), .main-table tbody td:nth-child(2){width:18%;}
+    .main-table thead th:nth-child(3), .main-table tbody td:nth-child(3){width:48%;}
+    .main-table thead th:nth-child(4), .main-table tbody td:nth-child(4){width:auto;white-space:nowrap;}
     .label-input{min-width:50px;font-size:11px;}
     table{font-size:11px;}
     thead th, tbody td{padding:22px 10px;}
@@ -2429,7 +2452,7 @@ function render(){
     const usersIndeterminate = someUsersChecked && !allUsersChecked;
 
     mainHolder.innerHTML = `
-      <table>
+      <table class="main-table">
         <thead><tr>
           <th class="checkbox-col"><input type="checkbox" id="selectAllUsers" class="row-check" ${allUsersChecked?'checked':''}></th>
           <th>Label</th>
