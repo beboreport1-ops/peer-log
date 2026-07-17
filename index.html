@@ -1828,22 +1828,6 @@ async function promptToggleIpHidden(ip){
   });
 }
 
-async function promptToggleUsernameHidden(key, displayName){
-  if(!isAdmin()) return;
-  const current = labels.get(key) || {label:'', hidden:false};
-  const goingToHide = !current.hidden;
-  await confirmModal({
-    title: goingToHide ? `Hide ${displayName}? (PSN ID + all their IPs)` : `Unhide ${displayName}?`,
-    submitLabel: goingToHide ? 'Hide' : 'Unhide',
-    danger: goingToHide,
-    onConfirm: async () => {
-      await saveLabelRemote(key, current.label, goingToHide);
-      labels.set(key, {label:current.label, hidden:goingToHide});
-      render();
-    }
-  });
-}
-
 async function promptAssignUsername({ids, currentUsername='', title, submitLabel='Save'}){
   if(!isAdmin() || !ids || !ids.length) return;
   await openModal({
@@ -2197,22 +2181,17 @@ async function bulkSetHidden(hideFlag){
   if(!total) return;
   const verb = hideFlag ? 'Hide' : 'Unhide';
   await confirmModal({
-    title: `${verb} ${total} selected row${total>1?'s':''}?${hideFlag?' (PSN ID + IPs for players, IP for unlabeled entries)':''}`,
+    title: `${verb} ${total} selected row${total>1?'s':''}?${hideFlag?' (all IPs on each row)':''}`,
     submitLabel: verb,
     danger: hideFlag,
     onConfirm: async () => {
-      await Promise.all([
-        ...selUsers.map(u=>{
-          const key = u.username.toLowerCase();
-          const current = labels.get(key) || {label:'', hidden:false};
-          labels.set(key, {label:current.label, hidden:hideFlag});
-          return saveLabelRemote(key, current.label, hideFlag);
-        }),
-        ...selUnlabeled.map(u=>{
-          ipHidden.set(u.ip, hideFlag);
-          return saveIpHiddenRemote(u.ip, hideFlag);
-        })
-      ]);
+      const userIps = selUsers.flatMap(u => u.history.map(h => h.ip));
+      const unlabeledIps = selUnlabeled.map(u => u.ip);
+      const allIps = [...new Set([...userIps, ...unlabeledIps])];
+      await Promise.all(allIps.map(ip=>{
+        ipHidden.set(ip, hideFlag);
+        return saveIpHiddenRemote(ip, hideFlag);
+      }));
       render();
       showToast(`${hideFlag?'hid':'unhid'} ${total} row${total>1?'s':''}`);
     }
@@ -2380,28 +2359,23 @@ function render(){
       const multi = u.history.length > 1;
       const parity = uIdx % 2 === 0 ? 'row-even' : 'row-odd';
       const labelInfo = labels.get(key) || {label:'', hidden:false};
-      const nameHidden = labelInfo.hidden;
-      const displayName = escapeHtml(nameHidden ? maskUsername(u.username) : u.username);
+      const displayName = escapeHtml(u.username);
       const labelCell = admin
         ? `<input class="label-input" data-key="${escapeHtml(key)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
         : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
-      const nameEye = admin
-        ? `<span class="chip-tip warn" data-tooltip="${nameHidden?'UNHIDE THIS ROW':'HIDE THIS ROW'} (PSN ID + IPs)"><button class="icon-btn eye-btn chip-btn chip-warn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" aria-label="${nameHidden?'unhide':'hide'} this row (PSN ID + IPs)">${nameHidden?'Show':'Hide'}</button></span>`
-        : '';
       const allHistIds = u.history.flatMap(h=>h.ids);
       const nameEdit = admin
         ? `<button class="icon-btn edit-psn-btn chip-btn" data-ids="${allHistIds.join(',')}" data-uname="${escapeHtml(u.username)}" title="edit PSN ID">Edit</button>`
         : '';
-      const nameCopySafe = escapeHtml(nameHidden ? maskUsername(u.username) : u.username);
-      const nameCopyBtn = u.username ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${nameCopySafe}" title="copy PSN ID" aria-label="copy PSN ID">⧉</button>` : '';
+      const nameCopyBtn = u.username ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID" aria-label="copy PSN ID">⧉</button>` : '';
       const uSelKey = userSelKey(u);
       const rowChecked = selected.has(uSelKey) ? 'checked' : '';
       rowsHtml += `
         <tr class="main-row ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
           <td>${labelCell}</td>
-          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameCopyBtn}${(nameEye||nameEdit)?`<span class="uname-actions">${nameEye}${nameEdit}</span>`:''}</td>
-          <td>${ipCell(u.latestIp, u.history[0].ids, {hidden:nameHidden, showEye:false, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
+          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameCopyBtn}${nameEdit?`<span class="uname-actions">${nameEdit}</span>`:''}</td>
+          <td>${ipCell(u.latestIp, u.history[0].ids, {hidden: ipHidden.get(u.latestIp)||false, showEye:true, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
           <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
           </td>
@@ -2414,7 +2388,7 @@ function render(){
               <td></td>
               <td></td>
               <td></td>
-              <td>${ipCell(h.ip, h.ids, {hidden:nameHidden, showEye:false, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
+              <td>${ipCell(h.ip, h.ids, {hidden: ipHidden.get(h.ip)||false, showEye:true, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
               <td>${locationCell(h.location)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
               <td class="last-seen">${formatLastSeen(h.addedAt)}</td>
             </tr>`;
@@ -2626,11 +2600,7 @@ function render(){
     document.querySelectorAll('.eye-btn').forEach(btn=>{
       btn.addEventListener('click', (e)=>{
         e.stopPropagation();
-        if(btn.dataset.unameKey !== undefined){
-          promptToggleUsernameHidden(btn.dataset.unameKey, btn.dataset.unameDisplay);
-        } else if(btn.dataset.ip !== undefined){
-          promptToggleIpHidden(btn.dataset.ip);
-        }
+        promptToggleIpHidden(btn.dataset.ip);
       });
     });
     document.querySelectorAll('.edit-psn-btn').forEach(btn=>{
