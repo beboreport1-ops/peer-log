@@ -1053,7 +1053,12 @@ function openModal({title, fields=[], submitLabel='Confirm', danger=false, onSub
       <div class="modal-box">
         <h3>${title}</h3>
         <div class="modal-fields">
-          ${fields.map(f=>`<label class="modal-label">${f.label}<input class="modal-input" type="${f.type||'text'}" data-field="${f.id}" value="${f.value?escapeHtml(f.value):''}" autocomplete="off"></label>`).join('')}
+          ${fields.map(f=>{
+            if(f.type==='select'){
+              return `<label class="modal-label">${f.label}<select class="modal-input" data-field="${f.id}">${(f.options||[]).map(o=>`<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('')}</select></label>`;
+            }
+            return `<label class="modal-label">${f.label}<input class="modal-input" type="${f.type||'text'}" data-field="${f.id}" value="${f.value?escapeHtml(f.value):''}" autocomplete="off"></label>`;
+          }).join('')}
         </div>
         <p class="modal-error"></p>
         <div class="modal-actions">
@@ -1066,7 +1071,7 @@ function openModal({title, fields=[], submitLabel='Confirm', danger=false, onSub
     const submitBtn = overlay.querySelector('.modal-submit');
     const cancelBtn = overlay.querySelector('.modal-cancel');
     const inputs = [...overlay.querySelectorAll('.modal-input')];
-    if(inputs[0]) setTimeout(()=>{ inputs[0].focus(); inputs[0].select(); }, 30);
+    if(inputs[0]) setTimeout(()=>{ inputs[0].focus(); if(inputs[0].select) inputs[0].select(); }, 30);
 
     function close(result){ overlay.remove(); resolve(result); }
     function collect(){
@@ -1310,6 +1315,40 @@ async function promptAssignUsername({ids, currentUsername='', title, submitLabel
   });
 }
 
+async function promptLinkOrAddUsername({ids, location, ip}){
+  if(!isAdmin() || !ids || !ids.length) return;
+  const candidates = candidatesForCountry(location);
+  const fields = [];
+  if(candidates.length){
+    fields.push({
+      id:'existing',
+      label:'Link to existing PSN ID (same country)',
+      type:'select',
+      options:[{value:'', label:'— none, type new below —'}, ...candidates.map(c=>({value:c, label:c}))]
+    });
+  }
+  fields.push({id:'psnid', label: candidates.length ? 'Or type a new/different PSN ID' : 'PSN ID', type:'text', value:''});
+  await openModal({
+    title: `Add PSN ID for ${ip}`,
+    fields,
+    submitLabel: 'Save',
+    onSubmit: async (vals) => {
+      const chosen = (vals.existing||'').trim();
+      const typed = (vals.psnid||'').trim();
+      const val = chosen || typed;
+      if(!val) return {ok:false, message:'Pick an existing PSN ID or type a new one'};
+      try{
+        await updateRowsUsername(ids, val);
+        await refreshFromCloud();
+        showToast(`set PSN ID to ${val}`);
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message:'Update failed — check connection'};
+      }
+    }
+  });
+}
+
 // ---------- data loading ----------
 async function refreshFromCloud(){
   setSyncStatus('syncing', 'syncing...');
@@ -1488,6 +1527,22 @@ function sharedIpUsers(ip, excludeUsername){
   const set = ipToUsers.get(ip);
   if(!set || set.size < 2) return [];
   return [...set].filter(n => n.toLowerCase() !== (excludeUsername||'').toLowerCase());
+}
+
+// ---------- link unlabeled IP to an existing PSN ID (matched by country) ----------
+function countryPart(location){
+  if(!location) return '';
+  const parts = location.split(',');
+  return parts[parts.length-1].trim().toLowerCase();
+}
+
+function candidatesForCountry(location){
+  const country = countryPart(location);
+  if(!country) return [];
+  return users
+    .filter(u => u.history.some(h => countryPart(h.location) === country))
+    .map(u => u.username)
+    .sort((a,b) => a.localeCompare(b));
 }
 
 function matchesQuery(u, q){
@@ -1778,6 +1833,8 @@ function render(){
       const labelCell = admin
         ? `<input class="label-input" data-key="${escapeHtml(key)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
         : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
+      const nameCopySafe = escapeHtml(nameHidden ? maskUsername(u.username) : u.username);
+      const nameCopyBtn = u.username ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${nameCopySafe}" title="copy PSN ID">⧉</button>` : '';
       const nameEye = admin
         ? `<button class="icon-btn eye-btn chip-btn chip-warn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="${nameHidden?'unhide':'hide'} this row (PSN ID + IPs)">${nameHidden?'Unhide':'Hide'}</button>`
         : '';
@@ -1791,7 +1848,7 @@ function render(){
         <tr class="main-row ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
           <td>${labelCell}</td>
-          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameEye}${nameEdit}</td>
+          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameCopyBtn}${nameEye}${nameEdit}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden:nameHidden, showEye:false, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
           <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
@@ -1905,7 +1962,7 @@ function render(){
               const uSelKey = unlabeledSelKey(u);
               const rowChecked = selected.has(uSelKey) ? 'checked' : '';
               return `
-              <tr class="${admin?'unlabeled-row':''}" data-ids="${u.ids.join(',')}" data-ip="${escapeHtml(u.ip)}">
+              <tr class="${admin?'unlabeled-row':''}" data-ids="${u.ids.join(',')}" data-ip="${escapeHtml(u.ip)}" data-location="${escapeHtml(u.location)}">
                 <td class="checkbox-col"><input type="checkbox" class="row-check unlabeled-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
                 <td>${labelCell}</td>
                 <td>${ipCell(u.ip, u.ids, {hidden: ipHidden.get(u.ip)||false, showEye:true, sharedWith:sharedIpUsers(u.ip, '')})}</td>
@@ -1939,11 +1996,10 @@ function render(){
     if(admin){
       const openAddPsn = (tr) => {
         const ids = tr.dataset.ids.split(',').filter(Boolean).map(Number);
-        promptAssignUsername({
+        promptLinkOrAddUsername({
           ids,
-          currentUsername: '',
-          title: `Add PSN ID for ${tr.dataset.ip}`,
-          submitLabel: 'Add PSN ID'
+          location: tr.dataset.location,
+          ip: tr.dataset.ip
         });
       };
       unlabeledHolder.querySelectorAll('.add-psn-btn').forEach(btn=>{
