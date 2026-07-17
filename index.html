@@ -1314,16 +1314,11 @@
     margin:0 2px;
   }
 
-  @media (max-width:520px){
+  @media (max-width:640px){
     body{padding:16px 12px 100px;}
     h1{font-size:13px;}
     .count b{font-size:17px;}
-    thead th:nth-child(5), tbody td:nth-child(5),
-    thead th:nth-child(6), tbody td:nth-child(6){display:none;}
-    .main-table thead th:nth-child(4), .main-table tbody td:nth-child(4){padding-left:14px;white-space:nowrap;}
     .label-input{min-width:50px;font-size:11px;}
-    table{font-size:11px;}
-    thead th, tbody td{padding:22px 10px;}
     .btn{padding:8px 12px;font-size:10px;}
     .chip-btn{font-size:9.5px;padding:1px 6px 0;}
     .chip-btn.chip-icon{padding:0;width:22px;font-size:10px;letter-spacing:0;line-height:22px;}
@@ -1341,6 +1336,74 @@
       margin-left:0;
     }
     header::before,.dropzone::before,.bulk-bar::before,.gate-box::before{font-size:8px;}
+
+    /* ---- Stacked/card layout under 640px: no horizontal overflow,
+       Location + Last Seen remain visible with inline labels ---- */
+    .main-table, .unlabeled-table{ border-collapse:separate; }
+    .main-table thead, .unlabeled-table thead{
+      position:absolute; left:-9999px; top:auto;
+      width:1px; height:1px; overflow:hidden;
+    }
+    .main-table tbody, .unlabeled-table tbody,
+    .main-table tr, .unlabeled-table tr,
+    .main-table td, .unlabeled-table td{
+      display:block;
+      width:100%;
+      box-sizing:border-box;
+      max-width:100%;
+    }
+    .main-table tr, .unlabeled-table tr{
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:8px;
+      padding:10px 12px;
+      margin-bottom:12px;
+      background:rgba(255,255,255,0.02);
+    }
+    .main-table td, .unlabeled-table td{
+      padding:6px 0 6px 40%;
+      position:relative;
+      border:none;
+      white-space:normal;
+      word-break:break-word;
+      overflow-wrap:anywhere;
+      min-height:26px;
+      font-size:12px;
+    }
+    .main-table td::before, .unlabeled-table td::before{
+      position:absolute;
+      left:0; top:6px;
+      width:36%;
+      padding-right:8px;
+      font-size:10px;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      opacity:0.6;
+      font-weight:600;
+    }
+    /* Column labels via nth-of-type — main table:
+       1 checkbox | 2 Label | 3 PSN ID | 4 IP | 5 Location | 6 Last Seen */
+    .main-table td:nth-of-type(2)::before{ content:"Label"; }
+    .main-table td:nth-of-type(3)::before{ content:"PSN ID"; }
+    .main-table td:nth-of-type(4)::before{ content:"IP"; }
+    .main-table td:nth-of-type(5)::before{ content:"Location"; }
+    .main-table td:nth-of-type(6)::before{ content:"Last Seen"; }
+    /* Unlabeled table:
+       1 checkbox | 2 Label | 3 IP | 4 Location | 5 Times Seen | 6 Last Seen */
+    .unlabeled-table td:nth-of-type(2)::before{ content:"Label"; }
+    .unlabeled-table td:nth-of-type(3)::before{ content:"IP"; }
+    .unlabeled-table td:nth-of-type(4)::before{ content:"Location"; }
+    .unlabeled-table td:nth-of-type(5)::before{ content:"Times Seen"; }
+    .unlabeled-table td:nth-of-type(6)::before{ content:"Last Seen"; }
+    /* checkbox cell: full-width, no label */
+    .main-table td.checkbox-col, .unlabeled-table td.checkbox-col{
+      padding:2px 0 6px 0;
+    }
+    .main-table td.checkbox-col::before, .unlabeled-table td.checkbox-col::before{
+      content:""; display:none;
+    }
+    /* IP-history sub-rows keep four empty leading cells — hide them so the
+       stacked card shows only IP / Location / Last Seen for that history entry */
+    .main-table tbody tr td:empty{ display:none; }
   }
 </style>
 </head>
