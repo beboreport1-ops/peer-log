@@ -1388,6 +1388,10 @@
       border-bottom:none;
       padding-bottom:4px;
     }
+    /* Hide the Label row in mobile cards when the row has a PSN ID (main table) */
+    .main-table td:nth-of-type(2){
+      display:none;
+    }
     /* PSN ID value gets a little breathing room from its label */
     .main-table td:nth-of-type(3){
       padding-left: calc(34% + 4px);
