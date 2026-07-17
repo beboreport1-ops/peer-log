@@ -1318,16 +1318,16 @@
     body{padding:16px 12px 100px;}
     h1{font-size:13px;}
     .count b{font-size:17px;}
-    .label-input{min-width:50px;font-size:11px;}
-    .btn{padding:8px 12px;font-size:10px;}
-    .chip-btn{font-size:9.5px;padding:1px 6px 0;}
-    .chip-btn.chip-icon{padding:0;width:22px;font-size:10px;letter-spacing:0;line-height:22px;}
+    .label-input{min-width:50px;font-size:12px;}
+    .btn{padding:10px 14px;font-size:10.5px;}
+    .chip-btn{font-size:10px;padding:2px 8px 1px;}
+    .chip-btn.chip-icon{padding:0;width:26px;font-size:11px;letter-spacing:0;line-height:26px;}
     .uname-actions,.ip-actions{
       display:flex;
       flex-wrap:wrap;
-      gap:10px;
+      gap:12px;
       margin-left:0;
-      margin-top:20px;
+      margin-top:24px;
     }
     .uname-actions .chip-btn,
     .ip-actions .chip-btn,
@@ -1354,30 +1354,36 @@
     }
     .main-table tr, .unlabeled-table tr{
       border:1px solid rgba(255,255,255,0.08);
-      border-radius:8px;
-      padding:10px 12px;
-      margin-bottom:12px;
+      border-radius:10px;
+      padding:14px 16px;
+      margin-bottom:14px;
       background:rgba(255,255,255,0.02);
     }
     .main-table td, .unlabeled-table td{
-      padding:6px 0 6px 40%;
+      padding:9px 0 9px 38%;
       position:relative;
       border:none;
+      border-bottom:1px solid rgba(255,255,255,0.04);
       white-space:normal;
       word-break:break-word;
       overflow-wrap:anywhere;
-      min-height:26px;
-      font-size:12px;
+      min-height:30px;
+      font-size:12.5px;
+      line-height:1.55;
+    }
+    .main-table td:last-child, .unlabeled-table td:last-child{
+      border-bottom:none;
+      padding-bottom:4px;
     }
     .main-table td::before, .unlabeled-table td::before{
       position:absolute;
-      left:0; top:6px;
-      width:36%;
-      padding-right:8px;
-      font-size:10px;
-      letter-spacing:0.08em;
+      left:0; top:9px;
+      width:34%;
+      padding-right:10px;
+      font-size:10.5px;
+      letter-spacing:0.09em;
       text-transform:uppercase;
-      opacity:0.6;
+      opacity:0.55;
       font-weight:600;
     }
     /* Column labels via nth-of-type — main table:
@@ -1396,7 +1402,8 @@
     .unlabeled-table td:nth-of-type(6)::before{ content:"Last Seen"; }
     /* checkbox cell: full-width, no label */
     .main-table td.checkbox-col, .unlabeled-table td.checkbox-col{
-      padding:2px 0 6px 0;
+      padding:6px 0 12px 0;
+      border-bottom:1px solid rgba(255,255,255,0.06);
     }
     .main-table td.checkbox-col::before, .unlabeled-table td.checkbox-col::before{
       content:""; display:none;
