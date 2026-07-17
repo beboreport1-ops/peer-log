@@ -653,7 +653,7 @@
   .label-static{color:var(--dim);font-size:12px;padding:5px 8px;display:block;font-style:italic;}
   .label-static::before{content:"~ ";color:var(--phosphor-faint);}
 
-  .ip-cell{display:flex;flex-direction:column;align-items:flex-start;gap:4px;}
+  .ip-cell{display:flex;flex-direction:column;align-items:flex-start;gap:8px;}
   .ip-line{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
 
   /* ==== chip buttons — bracketed tokens ==== */
@@ -684,7 +684,7 @@
   .chip-btn::after{content:"]";margin-left:2px;color:var(--phosphor-mute);opacity:.7;}
   .ip-cell .chip-btn{margin-left:0;}
   .ip-actions,.uname-actions{display:inline-flex;align-items:center;gap:4px;flex-wrap:nowrap;white-space:nowrap;}
-  .ip-actions{margin-top:2px;}
+  .ip-actions{margin-top:6px;}
   .uname-actions{margin-left:6px;}
   .chip-btn:hover{
     border-color:var(--phosphor);
@@ -1310,16 +1310,16 @@
     thead th:nth-child(6), tbody td:nth-child(6){display:none;}
     .label-input{min-width:50px;font-size:11px;}
     table{font-size:11px;}
-    thead th, tbody td{padding:9px 10px;}
+    thead th, tbody td{padding:12px 10px;}
     .btn{padding:8px 12px;font-size:10px;}
     .chip-btn{font-size:9.5px;padding:1px 6px 0;}
     .chip-btn.chip-icon{padding:0;width:22px;font-size:10px;letter-spacing:0;line-height:22px;}
     .uname-actions,.ip-actions{
       display:flex;
       flex-wrap:wrap;
-      gap:4px;
+      gap:6px;
       margin-left:0;
-      margin-top:4px;
+      margin-top:8px;
     }
     .uname-actions .chip-btn,
     .ip-actions .chip-btn,
