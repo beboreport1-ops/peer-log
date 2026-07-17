@@ -576,8 +576,8 @@
     font-size:12px;
     font-family:var(--mono);
   }
-  .main-table td:nth-child(3){overflow-wrap:break-word;}
-  .main-table thead th:nth-child(4), .main-table tbody td:nth-child(4){padding-left:18px;}
+  .main-table td:nth-child(2){overflow-wrap:break-word;}
+  .main-table thead th:nth-child(3), .main-table tbody td:nth-child(3){padding-left:18px;}
   thead th{
     text-align:left;
     padding:11px 14px;
@@ -821,11 +821,11 @@
     border-bottom:1px solid rgba(34,197,94,.05);
     background:rgba(0,0,0,.35);
   }
-  tr.hist-row td:nth-child(4){
+  tr.hist-row td:nth-child(3){
     padding-left:38px;
     position:relative;
   }
-  tr.hist-row td:nth-child(4)::before{
+  tr.hist-row td:nth-child(3)::before{
     content:"└─";
     position:absolute;
     left:20px;
@@ -1388,14 +1388,6 @@
       border-bottom:none;
       padding-bottom:4px;
     }
-    /* Hide the Label row in mobile cards when the row has a PSN ID (main table) */
-    .main-table tr.has-psn td.label-col{
-      display:none;
-    }
-    /* Keep PSN ID aligned with the other value columns now that Label is gone */
-    .main-table tr.has-psn td.label-col + td{
-      padding-left:34%;
-    }
     .main-table td::before, .unlabeled-table td::before{
       position:absolute;
       left:0; top:9px;
@@ -1407,13 +1399,12 @@
       opacity:0.55;
       font-weight:600;
     }
-    /* Column labels via nth-of-type — main table:
-       1 checkbox | 2 Label | 3 PSN ID | 4 IP | 5 Location | 6 Last Seen */
-    .main-table td:nth-of-type(2)::before{ content:"Label"; }
-    .main-table td:nth-of-type(3)::before{ content:"PSN ID"; }
-    .main-table td:nth-of-type(4)::before{ content:"IP"; }
-    .main-table td:nth-of-type(5)::before{ content:"Location"; }
-    .main-table td:nth-of-type(6)::before{ content:"Last Seen"; }
+    /* Column labels via nth-of-type — main table (no Label column, PSN ID always present):
+       1 checkbox | 2 PSN ID | 3 IP | 4 Location | 5 Last Seen */
+    .main-table td:nth-of-type(2)::before{ content:"PSN ID"; }
+    .main-table td:nth-of-type(3)::before{ content:"IP"; }
+    .main-table td:nth-of-type(4)::before{ content:"Location"; }
+    .main-table td:nth-of-type(5)::before{ content:"Last Seen"; }
     /* Unlabeled table:
        1 checkbox | 2 Label | 3 IP | 4 Location | 5 Times Seen | 6 Last Seen */
     .unlabeled-table td:nth-of-type(2)::before{ content:"Label"; }
@@ -2484,11 +2475,7 @@ function render(){
       const isExpanded = expanded.has(key);
       const multi = u.history.length > 1;
       const parity = uIdx % 2 === 0 ? 'row-even' : 'row-odd';
-      const labelInfo = labels.get(key) || {label:'', hidden:false};
       const displayName = escapeHtml(u.username);
-      const labelCell = admin
-        ? `<input class="label-input" data-key="${escapeHtml(key)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
-        : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
       const allHistIds = u.history.flatMap(h=>h.ids);
       const nameEdit = admin
         ? `<button class="icon-btn edit-psn-btn chip-btn" data-ids="${allHistIds.join(',')}" data-uname="${escapeHtml(u.username)}" title="edit PSN ID">Edit</button>`
@@ -2504,7 +2491,6 @@ function render(){
       rowsHtml += `
         <tr class="main-row has-psn ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
-          <td class="label-col">${labelCell}</td>
           <td><span class="caret">${(multi||admin)?'▸':''}</span>${displayName}${nameCopyBtn}${actionGroup}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden: latestHidden, showActions:false, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
           <td>${locationCell(u.latestLocation)}
@@ -2516,7 +2502,6 @@ function render(){
         u.history.forEach((h, i) => {
           rowsHtml += `
             <tr class="hist-row ${parity} ${i===0?'newest':''}">
-              <td></td>
               <td></td>
               <td></td>
               <td>${ipCell(h.ip, h.ids, {hidden: ipHidden.get(h.ip)||false, showEye:true, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
@@ -2536,7 +2521,6 @@ function render(){
       <table class="main-table">
         <thead><tr>
           <th class="checkbox-col"><input type="checkbox" id="selectAllUsers" class="row-check" ${allUsersChecked?'checked':''}></th>
-          <th>Label</th>
           ${th('username','PSN ID')}
           ${th('ip','Latest IP')}
           ${th('location','Latest Location')}
