@@ -1393,6 +1393,7 @@ let ipToUsers = new Map(); // ip -> Set of usernames sharing that IP (for alt/sm
 let sortKey = 'username';
 let sortDir = 1;
 let expanded = new Set();
+let revealedUnlabeled = new Set();
 let labels = new Map();    // username_key -> {label, hidden}
 let ipHidden = new Map();  // ip -> boolean
 let selected = new Set();  // composite keys of selected rows (users + unlabeled)
@@ -2395,12 +2396,12 @@ function render(){
       const rowHideBtn = ipHideBtn(u.latestIp, latestHidden);
       const rowDelBtn = ipDelBtn(u.latestIp, u.history[0].ids);
       const actionGroupContent = `${nameEdit}${rowHideBtn}${rowDelBtn}`;
-      const actionGroup = actionGroupContent ? `<span class="uname-actions">${actionGroupContent}</span>` : '';
+      const actionGroup = (isExpanded && actionGroupContent) ? `<span class="uname-actions">${actionGroupContent}</span>` : '';
       rowsHtml += `
         <tr class="main-row ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
           <td>${labelCell}</td>
-          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameCopyBtn}${actionGroup}</td>
+          <td><span class="caret">${(multi||admin)?'▸':''}</span>${displayName}${nameCopyBtn}${actionGroup}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden: latestHidden, showActions:false, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
           <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
@@ -2526,17 +2527,18 @@ function render(){
             ${filteredUnlabeled.map(u=>{
               const labelInfo = labels.get(u.labelKey) || {label:'', hidden:false};
               const rowHidden = ipHidden.get(u.ip)||false;
+              const isRevealed = revealedUnlabeled.has(u.labelKey);
               const addPsnBtn = admin ? `<button class="add-psn-btn chip-btn chip-ghost" data-ids="${u.ids.join(',')}" data-ip="${escapeHtml(u.ip)}" title="assign a PSN ID to this IP">+ add PSN ID</button>` : '';
               const rowHideBtn = ipHideBtn(u.ip, rowHidden);
               const rowDelBtn = ipDelBtn(u.ip, u.ids);
               const unlabeledActionContent = `${addPsnBtn}${rowHideBtn}${rowDelBtn}`;
               const labelCell = admin
-                ? `<input class="label-input" data-key="${escapeHtml(u.labelKey)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">${unlabeledActionContent?`<span class="uname-actions">${unlabeledActionContent}</span>`:''}`
+                ? `<input class="label-input" data-key="${escapeHtml(u.labelKey)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">${(isRevealed && unlabeledActionContent)?`<span class="uname-actions">${unlabeledActionContent}</span>`:''}`
                 : `<span class="label-static">${escapeHtml(labelInfo.label)||'—'}</span>`;
               const uSelKey = unlabeledSelKey(u);
               const rowChecked = selected.has(uSelKey) ? 'checked' : '';
               return `
-              <tr class="${admin?'unlabeled-row':''}" data-ids="${u.ids.join(',')}" data-ip="${escapeHtml(u.ip)}" data-location="${escapeHtml(u.location)}">
+              <tr class="${admin?'unlabeled-row':''} ${isRevealed?'expanded':''}" data-ids="${u.ids.join(',')}" data-ip="${escapeHtml(u.ip)}" data-location="${escapeHtml(u.location)}" data-label-key="${escapeHtml(u.labelKey)}">
                 <td class="checkbox-col"><input type="checkbox" class="row-check unlabeled-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
                 <td>${labelCell}</td>
                 <td>${ipCell(u.ip, u.ids, {hidden: rowHidden, showActions:false, sharedWith:sharedIpUsers(u.ip, '')})}</td>
@@ -2591,7 +2593,10 @@ function render(){
       unlabeledHolder.querySelectorAll('.unlabeled-row').forEach(tr=>{
         tr.addEventListener('click', e=>{
           if(e.target.closest('.icon-btn') || e.target.closest('.label-input') || e.target.closest('.row-check') || e.target.closest('.add-psn-btn')) return;
-          openAddPsn(tr);
+          const lk = tr.dataset.labelKey;
+          if(revealedUnlabeled.has(lk)) revealedUnlabeled.delete(lk);
+          else revealedUnlabeled.add(lk);
+          render();
         });
       });
     }
