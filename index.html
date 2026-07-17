@@ -793,6 +793,7 @@
   @media (prefers-reduced-motion: reduce){
     .chip-btn,.icon-btn{transition:none;}
     .chip-btn:active,.chip-btn.is-active,.icon-btn:active,.icon-btn.is-active{transform:none;}
+    tr.hist-row,.uname-actions,.ip-actions{animation:none;}
   }
 
   /* ==== expandable rows ==== */
@@ -810,9 +811,10 @@
     from{opacity:0;transform:translateY(-6px);}
     to{opacity:1;transform:translateY(0);}
   }
-  tr.hist-row{animation:rowFadeIn .16s ease-out;}
+  tr.hist-row{animation:rowFadeIn .22s ease-out backwards;}
   .uname-actions{animation:actionsFadeIn .18s ease-out;}
   .ip-actions{animation:actionsFadeIn .18s ease-out;}
+  tr.main-row td{transition:background .15s ease;}
 
   tr.hist-row td{
     padding:6px 14px;
@@ -2501,7 +2503,7 @@ function render(){
       if(isExpanded){
         u.history.forEach((h, i) => {
           rowsHtml += `
-            <tr class="hist-row ${parity} ${i===0?'newest':''}">
+            <tr class="hist-row ${parity} ${i===0?'newest':''}" style="animation-delay:${Math.min(i*35,250)}ms">
               <td></td>
               <td></td>
               <td>${ipCell(h.ip, h.ids, {hidden: ipHidden.get(h.ip)||false, showEye:true, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
