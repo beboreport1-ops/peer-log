@@ -715,8 +715,11 @@
   .chip-btn.chip-ghost{border-style:dashed;}
   .chip-btn.chip-ghost:hover{border-style:solid;}
   .chip-btn.chip-ghost:focus-visible{border-style:solid;}
+  .chip-btn.ip-tag{cursor:default;}
   .chip-btn.chip-accent{color:var(--phosphor);border-color:var(--phosphor-dim);background:rgba(34,197,94,.06);}
   .chip-btn.chip-accent:hover{background:rgba(34,197,94,.14);box-shadow:0 0 10px rgba(34,197,94,.3);}
+  .chip-btn.chip-dynamic{color:var(--warn);border-color:rgba(234,179,8,.4);background:rgba(234,179,8,.06);cursor:default;}
+  .chip-btn.chip-dynamic:hover{background:rgba(234,179,8,.14);box-shadow:0 0 10px rgba(234,179,8,.25);}
   .chip-btn.chip-warn{color:var(--phosphor-dim);}
   .chip-btn.chip-warn:hover{color:var(--warn);border-color:var(--warn);background:rgba(234,179,8,.1);box-shadow:0 0 8px rgba(234,179,8,.25);}
   .chip-btn.chip-warn:hover::before,.chip-btn.chip-warn:hover::after{color:var(--warn);}
@@ -1393,7 +1396,7 @@ let ipToUsers = new Map(); // ip -> Set of usernames sharing that IP (for alt/sm
 let sortKey = 'username';
 let sortDir = 1;
 let expanded = new Set();
-let labels = new Map();    // username_key -> {label, hidden}
+let labels = new Map();    // username_key -> {label, hidden, ipType}
 let ipHidden = new Map();  // ip -> boolean
 let selected = new Set();  // composite keys of selected rows (users + unlabeled)
 let passwordHash = null;
@@ -1514,11 +1517,11 @@ const updateRowsUsername = (ids, username) => sbFetch(`peer_rows?id=in.(${ids.jo
   headers:{'Prefer':'return=minimal'},
   body: JSON.stringify({username})
 });
-const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden');
-const saveLabelRemote = (usernameKey, label, hidden) => sbFetch('peer_labels?on_conflict=username_key', {
+const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden,ip_type');
+const saveLabelRemote = (usernameKey, label, hidden, ipType='') => sbFetch('peer_labels?on_conflict=username_key', {
   method:'POST',
   headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-  body: JSON.stringify([{username_key: usernameKey, label, hidden}])
+  body: JSON.stringify([{username_key: usernameKey, label, hidden, ip_type: ipType || null}])
 });
 const loadIpHidden = () => sbFetch('peer_ip_hidden?select=ip,hidden');
 const saveIpHiddenRemote = (ip, hidden) => sbFetch('peer_ip_hidden?on_conflict=ip', {
@@ -1543,7 +1546,7 @@ function openModal({title, fields=[], submitLabel='Confirm', danger=false, onSub
         <div class="modal-fields">
           ${fields.map(f=>{
             if(f.type==='select'){
-              return `<label class="modal-label">${f.label}<select class="modal-input" data-field="${f.id}">${(f.options||[]).map(o=>`<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('')}</select></label>`;
+              return `<label class="modal-label">${f.label}<select class="modal-input" data-field="${f.id}">${(f.options||[]).map(o=>`<option value="${escapeHtml(o.value)}" ${o.value===(f.value||'')?'selected':''}>${escapeHtml(o.label)}</option>`).join('')}</select></label>`;
             }
             return `<label class="modal-label">${f.label}<input class="modal-input" type="${f.type||'text'}" data-field="${f.id}" value="${f.value?escapeHtml(f.value):''}" autocomplete="off"></label>`;
           }).join('')}
@@ -1828,6 +1831,37 @@ async function promptToggleIpHidden(ip){
   });
 }
 
+async function promptSetIpType(key, displayName){
+  if(!isAdmin()) return;
+  const current = labels.get(key) || {label:'', hidden:false, ipType:''};
+  await openModal({
+    title: `Set IP type for ${displayName}`,
+    fields: [{
+      id:'iptype',
+      label:'IP type',
+      type:'select',
+      value: current.ipType || '',
+      options:[
+        {value:'', label:'— none —'},
+        {value:'static', label:'Static IP'},
+        {value:'dynamic', label:'Dynamic IP'}
+      ]
+    }],
+    submitLabel:'Save',
+    onSubmit: async (vals) => {
+      const val = (vals.iptype||'').trim();
+      labels.set(key, {label:current.label, hidden:current.hidden, ipType:val});
+      try{
+        await saveLabelRemote(key, current.label, current.hidden, val);
+        render();
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message:'Save failed — check connection'};
+      }
+    }
+  });
+}
+
 async function promptAssignUsername({ids, currentUsername='', title, submitLabel='Save'}){
   if(!isAdmin() || !ids || !ids.length) return;
   await openModal({
@@ -1889,7 +1923,7 @@ async function refreshFromCloud(){
   try{
     const [data, labelData, ipHiddenData] = await Promise.all([loadAllRows(), loadLabels(), loadIpHidden()]);
     rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id, addedAt:r.created_at||''}));
-    labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden}]));
+    labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden, ipType:l.ip_type||''}]));
     ipHidden = new Map((ipHiddenData||[]).map(r => [r.ip, !!r.hidden]));
     buildGroups();
     toolbar.style.display = 'flex';
@@ -2245,8 +2279,24 @@ function formatLastSeen(iso){
   if(!iso) return '—';
   const d = new Date(iso);
   if(isNaN(d.getTime())) return '—';
-  const short = d.toLocaleString('en-US', {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
-  return `<span title="${escapeHtml(d.toISOString())}">${escapeHtml(short)}</span>`;
+  const now = new Date();
+  const dayMs = 86400000;
+  const utcThen = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  const utcNow = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((utcNow - utcThen) / dayMs);
+  let text;
+  if(diffDays <= 0) text = 'today';
+  else if(diffDays === 1) text = '1 day ago';
+  else if(diffDays < 30) text = `${diffDays} days ago`;
+  else if(diffDays < 365){
+    const m = Math.floor(diffDays/30);
+    text = `${m} month${m>1?'s':''} ago`;
+  } else {
+    const y = Math.floor(diffDays/365);
+    text = `${y} year${y>1?'s':''} ago`;
+  }
+  const full = d.toLocaleString('en-US', {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'});
+  return `<span title="${escapeHtml(full)}">${escapeHtml(text)}</span>`;
 }
 function maskIp(ip){
   if(!ip) return ip;
@@ -2295,10 +2345,10 @@ function locationCell(location){
 }
 
 async function saveLabel(key, value){
-  const current = labels.get(key) || {label:'', hidden:false};
-  labels.set(key, {label:value, hidden:current.hidden});
+  const current = labels.get(key) || {label:'', hidden:false, ipType:''};
+  labels.set(key, {label:value, hidden:current.hidden, ipType:current.ipType});
   try{
-    await saveLabelRemote(key, value, current.hidden);
+    await saveLabelRemote(key, value, current.hidden, current.ipType);
   }catch(e){
     console.error(e);
     showToast('label save failed — check connection', true);
@@ -2358,7 +2408,7 @@ function render(){
       const isExpanded = expanded.has(key);
       const multi = u.history.length > 1;
       const parity = uIdx % 2 === 0 ? 'row-even' : 'row-odd';
-      const labelInfo = labels.get(key) || {label:'', hidden:false};
+      const labelInfo = labels.get(key) || {label:'', hidden:false, ipType:''};
       const displayName = escapeHtml(u.username);
       const labelCell = admin
         ? `<input class="label-input" data-key="${escapeHtml(key)}" value="${escapeHtml(labelInfo.label)}" placeholder="+ label">`
@@ -2368,13 +2418,27 @@ function render(){
         ? `<button class="icon-btn edit-psn-btn chip-btn" data-ids="${allHistIds.join(',')}" data-uname="${escapeHtml(u.username)}" title="edit PSN ID">Edit</button>`
         : '';
       const nameCopyBtn = u.username ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID" aria-label="copy PSN ID">⧉</button>` : '';
+      let ipTag;
+      if(labelInfo.ipType === 'static'){
+        ipTag = admin
+          ? `<button class="chip-btn chip-accent ip-tag ip-tag-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="tagged manually — click to change">Static IP</button>`
+          : `<span class="chip-btn chip-accent ip-tag">Static IP</span>`;
+      } else if(labelInfo.ipType === 'dynamic'){
+        ipTag = admin
+          ? `<button class="chip-btn chip-dynamic ip-tag ip-tag-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="tagged manually — click to change">Dynamic IP</button>`
+          : `<span class="chip-btn chip-dynamic ip-tag">Dynamic IP</span>`;
+      } else {
+        ipTag = admin
+          ? `<button class="chip-btn chip-ghost ip-tag-btn" data-uname-key="${escapeHtml(key)}" data-uname-display="${escapeHtml(u.username)}" title="tag as Static or Dynamic IP">+ tag</button>`
+          : '';
+      }
       const uSelKey = userSelKey(u);
       const rowChecked = selected.has(uSelKey) ? 'checked' : '';
       rowsHtml += `
         <tr class="main-row ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
           <td>${labelCell}</td>
-          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameCopyBtn}${nameEdit?`<span class="uname-actions">${nameEdit}</span>`:''}</td>
+          <td><span class="caret">${multi?'▸':''}</span>${displayName}${nameCopyBtn}${ipTag}${nameEdit?`<span class="uname-actions">${nameEdit}</span>`:''}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden: ipHidden.get(u.latestIp)||false, showEye:true, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
           <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
@@ -2458,7 +2522,7 @@ function render(){
 
     mainHolder.querySelectorAll('.main-row').forEach(tr=>{
       tr.addEventListener('click', (e)=>{
-        if(e.target.closest('.badge') || e.target.closest('.icon-btn') || e.target.closest('.label-input') || e.target.closest('.row-check')) return;
+        if(e.target.closest('.badge') || e.target.closest('.icon-btn') || e.target.closest('.label-input') || e.target.closest('.row-check') || e.target.closest('.ip-tag-btn')) return;
         const key = tr.dataset.key;
         if(expanded.has(key)) expanded.delete(key);
         else expanded.add(key);
@@ -2613,6 +2677,12 @@ function render(){
           title: `Edit PSN ID for ${btn.dataset.uname}`,
           submitLabel: 'Save'
         });
+      });
+    });
+    document.querySelectorAll('.ip-tag-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        promptSetIpType(btn.dataset.unameKey, btn.dataset.unameDisplay);
       });
     });
   }
