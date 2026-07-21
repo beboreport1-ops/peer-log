@@ -2098,11 +2098,25 @@ function parseFile(file){
   });
 }
 
+function knownUsernameForIp(ip){
+  const matches = users.filter(u => u.latestIp === ip);
+  if(matches.length !== 1) return ''; // unknown, or ambiguous (2+ players currently have this as latest)
+  return matches[0].username;
+}
+
 async function handleFiles(files){
   if(!isAdmin()) return;
   setSyncStatus('syncing', 'reading file(s)...');
   const results = await Promise.all(files.map(parseFile));
-  const allNewRows = results.flat().map(r => ({username:r.username, ip:r.ip, location:r.location}));
+  let autoMatched = 0;
+  const allNewRows = results.flat().map(r => {
+    let username = r.username;
+    if(!username && r.ip){
+      const known = knownUsernameForIp(r.ip);
+      if(known){ username = known; autoMatched++; }
+    }
+    return {username, ip:r.ip, location:r.location};
+  });
   if(!allNewRows.length){
     updateSyncIndicator();
     return;
@@ -2110,7 +2124,7 @@ async function handleFiles(files){
   const pending = getPendingRows();
   pending.push(...allNewRows);
   setPendingRows(pending);
-  showToast(`queued ${allNewRows.length} row${allNewRows.length>1?'s':''}`);
+  showToast(`queued ${allNewRows.length} row${allNewRows.length>1?'s':''}${autoMatched?` (${autoMatched} auto-matched to existing PSN IDs)`:''}`);
   await flushPendingUploads();
 }
 
