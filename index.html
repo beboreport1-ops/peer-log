@@ -1451,6 +1451,21 @@
       opacity:0.55;
       font-weight:600;
     }
+
+    /* Give the nested IP-history sub-cards a bit more left breathing room
+       so the IP/Location/Last Seen labels aren't flush against the card edge */
+    .main-table tr.hist-row{
+      padding-left:24px !important;
+      padding-right:16px !important;
+    }
+
+    /* The desktop "small gap before IP" rule (18px) has higher specificity
+       than the generic card rule, so it was winning here too and pulling
+       the IP value in flush against its label instead of lining up with
+       Location/Last Seen. Restore the 34% card offset for main rows. */
+    .main-table tbody td:nth-child(3){
+      padding-left:34% !important;
+    }
   }
 </style>
 </head>
