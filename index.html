@@ -2099,6 +2099,34 @@ async function openAddRowManual(){
     }
   });
 }
+async function promptAddIpToUser(username){
+  if(!isAdmin() || !username) return;
+  await openModal({
+    title: `Add IP for ${username}`,
+    fields: [
+      {id:'ip', label:'IP address'},
+      {id:'location', label:'Location (e.g. City, Country)'}
+    ],
+    submitLabel: 'Add IP',
+    onSubmit: async (vals) => {
+      const ip = (vals.ip||'').trim();
+      const location = (vals.location||'').trim();
+      if(!ip) return {ok:false, message:'Enter an IP address'};
+      try{
+        const pending = getPendingRows();
+        pending.push({username, ip, location});
+        setPendingRows(pending);
+        await flushPendingUploads();
+        await refreshFromCloud();
+        showToast(`added IP for ${username}`);
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message:'Save failed — check connection'};
+      }
+    }
+  });
+}
+
 addRowBtn.addEventListener('click', openAddRowManual);
 
 function buildGroups(){
@@ -2482,13 +2510,16 @@ function render(){
       const nameEdit = admin
         ? `<button class="icon-btn edit-psn-btn chip-btn" data-ids="${allHistIds.join(',')}" data-uname="${escapeHtml(u.username)}" title="edit PSN ID">Edit</button>`
         : '';
+      const addIpBtn = admin
+        ? `<button class="icon-btn add-ip-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="add an IP for ${escapeHtml(u.username)}">+ IP</button>`
+        : '';
       const nameCopyBtn = u.username ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID" aria-label="copy PSN ID">⧉</button>` : '';
       const uSelKey = userSelKey(u);
       const rowChecked = selected.has(uSelKey) ? 'checked' : '';
       const latestHidden = ipHidden.get(u.latestIp)||false;
       const rowHideBtn = ipHideBtn(u.latestIp, latestHidden);
       const rowDelBtn = ipDelBtn(u.latestIp, u.history[0].ids);
-      const actionGroupContent = `${nameEdit}${rowHideBtn}${rowDelBtn}`;
+      const actionGroupContent = `${nameEdit}${addIpBtn}${rowHideBtn}${rowDelBtn}`;
       const actionGroup = (isExpanded && actionGroupContent) ? `<span class="uname-actions">${actionGroupContent}</span>` : '';
       rowsHtml += `
         <tr class="main-row has-psn ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
@@ -2739,6 +2770,12 @@ function render(){
           title: `Edit PSN ID for ${btn.dataset.uname}`,
           submitLabel: 'Save'
         });
+      });
+    });
+    document.querySelectorAll('.add-ip-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        promptAddIpToUser(btn.dataset.uname);
       });
     });
   }
