@@ -1426,6 +1426,31 @@
     /* IP-history sub-rows keep four empty leading cells — hide them so the
        stacked card shows only IP / Location / Last Seen for that history entry */
     .main-table tbody tr td:empty{ display:none; }
+
+    /* The desktop hist-row rules (tree-mark, tighter padding) have higher
+       CSS specificity than the generic card rule above, so on mobile they
+       were winning and causing the Location/Last Seen labels to overlap
+       the actual text. Restore card padding/position for hist-row cells. */
+    .main-table tr.hist-row td{
+      padding:9px 0 9px 34% !important;
+      position:relative;
+      font-size:12.5px;
+    }
+    .main-table tr.hist-row td:nth-child(3){
+      padding-left:34% !important;
+    }
+    .main-table tr.hist-row td:nth-child(3)::before{
+      content:"IP";
+      position:absolute;
+      left:0; top:9px;
+      width:30%;
+      padding-right:10px;
+      font-size:10.5px;
+      letter-spacing:0.09em;
+      text-transform:uppercase;
+      opacity:0.55;
+      font-weight:600;
+    }
   }
 </style>
 </head>
