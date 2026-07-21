@@ -1463,6 +1463,7 @@
   <div class="bulk-bar" id="bulkBar" style="display:none;">
     <span class="count" id="bulkCount">0 selected</span>
     <button class="btn" id="bulkExportBtn">Export Selected</button>
+    <button class="btn" id="bulkExportTextBtn">Export as Text</button>
     <button class="btn warn" id="bulkHideBtn" style="display:none;">Hide Selected</button>
     <button class="btn" id="bulkUnhideBtn" style="display:none;">Unhide Selected</button>
     <button class="btn danger" id="bulkDeleteBtn" style="display:none;">Delete Selected</button>
@@ -1513,6 +1514,7 @@ const changePassBtn = document.getElementById('changePassBtn');
 const bulkBar = document.getElementById('bulkBar');
 const bulkCount = document.getElementById('bulkCount');
 const bulkExportBtn = document.getElementById('bulkExportBtn');
+const bulkExportTextBtn = document.getElementById('bulkExportTextBtn');
 const bulkHideBtn = document.getElementById('bulkHideBtn');
 const bulkUnhideBtn = document.getElementById('bulkUnhideBtn');
 const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
@@ -2104,17 +2106,15 @@ async function promptAddIpToUser(username){
   await openModal({
     title: `Add IP for ${username}`,
     fields: [
-      {id:'ip', label:'IP address'},
-      {id:'location', label:'Location (e.g. City, Country)'}
+      {id:'ip', label:'IP address'}
     ],
     submitLabel: 'Add IP',
     onSubmit: async (vals) => {
       const ip = (vals.ip||'').trim();
-      const location = (vals.location||'').trim();
       if(!ip) return {ok:false, message:'Enter an IP address'};
       try{
         const pending = getPendingRows();
-        pending.push({username, ip, location});
+        pending.push({username, ip, location:''});
         setPendingRows(pending);
         await flushPendingUploads();
         await refreshFromCloud();
@@ -2275,6 +2275,39 @@ function exportSelectedCSV(){
   showToast(`exported ${selUsers.length + selUnlabeled.length} selected row${(selUsers.length+selUnlabeled.length)>1?'s':''}`);
 }
 
+function buildTextExport(userList){
+  return userList.map(u => {
+    const lines = [`PSN ID: ${u.username}`, 'IPs:'];
+    u.history.forEach(h => {
+      lines.push(`  - ${h.ip} — ${h.location || '—'}`);
+    });
+    return lines.join('\n');
+  }).join('\n\n');
+}
+
+function downloadTextFile(text, filenamePrefix){
+  const blob = new Blob([text], {type:'text/plain;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  a.href = url;
+  a.download = `${filenamePrefix}-${stamp}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportSelectedText(){
+  const selUsers = getSelectedUserObjs();
+  if(!selUsers.length){
+    showToast('select at least one PSN ID to export as text');
+    return;
+  }
+  downloadTextFile(buildTextExport(selUsers), 'peer-log-selected');
+  showToast(`exported ${selUsers.length} PSN ID${selUsers.length>1?'s':''} as text`);
+}
+
 async function bulkDeleteSelected(){
   if(!isAdmin()) return;
   const selUsers = getSelectedUserObjs();
@@ -2325,6 +2358,7 @@ async function bulkSetHidden(hideFlag){
 }
 
 bulkExportBtn.addEventListener('click', exportSelectedCSV);
+bulkExportTextBtn.addEventListener('click', exportSelectedText);
 bulkHideBtn.addEventListener('click', ()=>bulkSetHidden(true));
 bulkUnhideBtn.addEventListener('click', ()=>bulkSetHidden(false));
 bulkDeleteBtn.addEventListener('click', bulkDeleteSelected);
