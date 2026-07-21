@@ -1651,6 +1651,11 @@ const updateRowsUsername = (ids, username) => sbFetch(`peer_rows?id=in.(${ids.jo
   headers:{'Prefer':'return=minimal'},
   body: JSON.stringify({username})
 });
+const touchRowsTimestamp = (ids) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`, {
+  method:'PATCH',
+  headers:{'Prefer':'return=minimal'},
+  body: JSON.stringify({created_at: new Date().toISOString()})
+});
 const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden');
 const saveLabelRemote = (usernameKey, label, hidden) => sbFetch('peer_labels?on_conflict=username_key', {
   method:'POST',
@@ -2109,7 +2114,7 @@ async function handleFiles(files){
   setSyncStatus('syncing', 'reading file(s)...');
   const results = await Promise.all(files.map(parseFile));
   let autoMatched = 0;
-  const allNewRows = results.flat().map(r => {
+  const parsedRows = results.flat().map(r => {
     let username = r.username;
     if(!username && r.ip){
       const known = knownUsernameForIp(r.ip);
@@ -2117,14 +2122,51 @@ async function handleFiles(files){
     }
     return {username, ip:r.ip, location:r.location};
   });
-  if(!allNewRows.length){
+  if(!parsedRows.length){
     updateSyncIndicator();
     return;
   }
+
+  // De-dupe against what's already in the database: exact same PSN ID + IP +
+  // location just gets its Last Seen refreshed instead of adding a new row.
+  const existingByKey = new Map(); // "username|ip|location" -> most recent row id
+  rawRows.forEach(r => {
+    const key = `${(r.username||'').toLowerCase()}|${r.ip}|${r.location}`;
+    existingByKey.set(key, r.idx); // ascending order, so last write wins = most recent
+  });
+
+  const toInsert = [];
+  const touchIds = [];
+  parsedRows.forEach(r => {
+    const key = `${(r.username||'').toLowerCase()}|${r.ip}|${r.location}`;
+    if(existingByKey.has(key)){
+      touchIds.push(existingByKey.get(key));
+    } else {
+      toInsert.push(r);
+    }
+  });
+
+  if(touchIds.length){
+    try{ await touchRowsTimestamp(touchIds); }catch(e){ console.error(e); }
+  }
+
+  if(!toInsert.length){
+    if(touchIds.length){
+      await refreshFromCloud();
+      showToast(`refreshed Last Seen for ${touchIds.length} existing row${touchIds.length>1?'s':''} (no new rows)`);
+    } else {
+      updateSyncIndicator();
+    }
+    return;
+  }
+
   const pending = getPendingRows();
-  pending.push(...allNewRows);
+  pending.push(...toInsert);
   setPendingRows(pending);
-  showToast(`queued ${allNewRows.length} row${allNewRows.length>1?'s':''}${autoMatched?` (${autoMatched} auto-matched to existing PSN IDs)`:''}`);
+  const parts = [`queued ${toInsert.length} new row${toInsert.length>1?'s':''}`];
+  if(touchIds.length) parts.push(`refreshed ${touchIds.length} existing`);
+  if(autoMatched) parts.push(`${autoMatched} auto-matched to existing PSN IDs`);
+  showToast(parts.join(', '));
   await flushPendingUploads();
 }
 
