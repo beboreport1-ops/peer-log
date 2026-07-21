@@ -1140,6 +1140,27 @@
     text-transform:uppercase;
     margin-bottom:14px;
   }
+  .import-report{
+    list-style:none;
+    margin:0;
+    padding:0;
+  }
+  .import-report li{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding:9px 0;
+    border-bottom:1px solid var(--line);
+    font-size:12px;
+    color:var(--text-soft);
+  }
+  .import-report li:last-child{border-bottom:none;}
+  .import-report li b{
+    color:var(--phosphor);
+    font-size:14px;
+    min-width:22px;
+    text-align:right;
+  }
   .modal-input{
     display:block;
     width:100%;
@@ -1403,18 +1424,20 @@
       font-weight:600;
     }
     /* Column labels via nth-of-type — main table (no Label column, PSN ID always present):
-       1 checkbox | 2 PSN ID | 3 IP | 4 Location | 5 Last Seen */
+       1 checkbox | 2 PSN ID | 3 IP | 4 Location | 5 First Seen | 6 Last Seen */
     .main-table td:nth-of-type(2)::before{ content:"PSN ID"; }
     .main-table td:nth-of-type(3)::before{ content:"IP"; }
     .main-table td:nth-of-type(4)::before{ content:"Location"; }
-    .main-table td:nth-of-type(5)::before{ content:"Last Seen"; }
+    .main-table td:nth-of-type(5)::before{ content:"First Seen"; }
+    .main-table td:nth-of-type(6)::before{ content:"Last Seen"; }
     /* Unlabeled table:
-       1 checkbox | 2 Label | 3 IP | 4 Location | 5 Times Seen | 6 Last Seen */
+       1 checkbox | 2 Label | 3 IP | 4 Location | 5 Times Seen | 6 First Seen | 7 Last Seen */
     .unlabeled-table td:nth-of-type(2)::before{ content:"Label"; }
     .unlabeled-table td:nth-of-type(3)::before{ content:"IP"; }
     .unlabeled-table td:nth-of-type(4)::before{ content:"Location"; }
     .unlabeled-table td:nth-of-type(5)::before{ content:"Times Seen"; }
-    .unlabeled-table td:nth-of-type(6)::before{ content:"Last Seen"; }
+    .unlabeled-table td:nth-of-type(6)::before{ content:"First Seen"; }
+    .unlabeled-table td:nth-of-type(7)::before{ content:"Last Seen"; }
     /* checkbox cell: full-width, no label */
     .main-table td.checkbox-col, .unlabeled-table td.checkbox-col{
       padding:6px 0 12px 0;
@@ -2077,7 +2100,9 @@ function parseFile(file){
       complete: res => {
         const fieldMap = {};
         res.meta.fields.forEach(f => fieldMap[f] = normKey(f));
-        const parsed = res.data.map(r => {
+        let skippedJunk = 0, skippedCity = 0;
+        const rows = [];
+        res.data.forEach(r => {
           const out = {username:'', ip:'', location:'', city:'', country:''};
           Object.keys(r).forEach(k=>{
             const nk = fieldMap[k];
@@ -2094,13 +2119,29 @@ function parseFile(file){
           }
           delete out.city;
           delete out.country;
-          return out;
-        }).filter(r => r.username || r.ip || r.location);
-        resolve(parsed);
+          if(!(out.username || out.ip || out.location)){
+            skippedJunk++;
+            return;
+          }
+          if(isExcludedCity(out.location)){
+            skippedCity++;
+            return;
+          }
+          rows.push(out);
+        });
+        resolve({rows, skippedJunk, skippedCity});
       },
-      error: () => resolve([])
+      error: () => resolve({rows:[], skippedJunk:0, skippedCity:0})
     });
   });
+}
+
+// Rows whose city matches one of these are silently skipped during CSV import.
+const EXCLUDED_CITIES = ['luton'];
+function isExcludedCity(location){
+  if(!location) return false;
+  const city = location.split(',')[0].trim().toLowerCase();
+  return EXCLUDED_CITIES.includes(city);
 }
 
 function knownUsernameForIp(ip){
@@ -2113,8 +2154,10 @@ async function handleFiles(files){
   if(!isAdmin()) return;
   setSyncStatus('syncing', 'reading file(s)...');
   const results = await Promise.all(files.map(parseFile));
+  const skippedJunk = results.reduce((sum,r)=>sum+r.skippedJunk, 0);
+  const skippedCity = results.reduce((sum,r)=>sum+r.skippedCity, 0);
   let autoMatched = 0;
-  const parsedRows = results.flat().map(r => {
+  const parsedRows = results.flatMap(r=>r.rows).map(r => {
     let username = r.username;
     if(!username && r.ip){
       const known = knownUsernameForIp(r.ip);
@@ -2122,8 +2165,10 @@ async function handleFiles(files){
     }
     return {username, ip:r.ip, location:r.location};
   });
+
   if(!parsedRows.length){
     updateSyncIndicator();
+    if(skippedJunk || skippedCity) await showImportReport({inserted:0, refreshed:0, autoMatched:0, skippedJunk, skippedCity});
     return;
   }
 
@@ -2151,23 +2196,49 @@ async function handleFiles(files){
   }
 
   if(!toInsert.length){
-    if(touchIds.length){
-      await refreshFromCloud();
-      showToast(`refreshed Last Seen for ${touchIds.length} existing row${touchIds.length>1?'s':''} (no new rows)`);
-    } else {
-      updateSyncIndicator();
-    }
+    await refreshFromCloud();
+    await showImportReport({inserted:0, refreshed:touchIds.length, autoMatched, skippedJunk, skippedCity});
     return;
   }
 
   const pending = getPendingRows();
   pending.push(...toInsert);
   setPendingRows(pending);
-  const parts = [`queued ${toInsert.length} new row${toInsert.length>1?'s':''}`];
-  if(touchIds.length) parts.push(`refreshed ${touchIds.length} existing`);
-  if(autoMatched) parts.push(`${autoMatched} auto-matched to existing PSN IDs`);
-  showToast(parts.join(', '));
   await flushPendingUploads();
+  await showImportReport({inserted:toInsert.length, refreshed:touchIds.length, autoMatched, skippedJunk, skippedCity});
+}
+
+function showImportReport({inserted, refreshed, autoMatched, skippedJunk, skippedCity}){
+  const row = (n, label) => `<li><span>${label}</span><b>${n}</b></li>`;
+  const body = `<ul class="import-report">
+    ${row(inserted, `new row${inserted===1?'':'s'} added`)}
+    ${row(refreshed, `existing row${refreshed===1?'':'s'} refreshed (Last Seen updated)`)}
+    ${row(autoMatched, `auto-matched to an existing PSN ID`)}
+    ${row(skippedCity, `skipped (excluded city)`)}
+    ${row(skippedJunk, `malformed row${skippedJunk===1?'':'s'} ignored`)}
+  </ul>`;
+  return showInfoModal({title:'Import complete', bodyHtml:body});
+}
+
+function showInfoModal({title, bodyHtml}){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal-box">
+        <h3>${title}</h3>
+        <div class="modal-fields">${bodyHtml}</div>
+        <div class="modal-actions">
+          <button class="btn primary modal-ok">OK</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const okBtn = overlay.querySelector('.modal-ok');
+    function close(){ overlay.remove(); resolve(); }
+    okBtn.addEventListener('click', close);
+    overlay.addEventListener('click', e=>{ if(e.target===overlay) close(); });
+    setTimeout(()=>okBtn.focus(), 30);
+  });
 }
 
 async function openAddRowManual(){
@@ -2229,26 +2300,33 @@ function buildGroups(){
   rawRows.forEach(r => {
     if(r.username){
       const key = r.username.toLowerCase();
-      if(!map.has(key)) map.set(key, {username:r.username, ipMap:new Map()});
+      if(!map.has(key)) map.set(key, {username:r.username, ipMap:new Map(), firstAddedAt:'', latestAddedAt:''});
       const g = map.get(key);
       g.username = r.username;
+      if(r.addedAt){
+        if(!g.firstAddedAt || new Date(r.addedAt) < new Date(g.firstAddedAt)) g.firstAddedAt = r.addedAt;
+        if(!g.latestAddedAt || new Date(r.addedAt) > new Date(g.latestAddedAt)) g.latestAddedAt = r.addedAt;
+      }
       const existing = g.ipMap.get(r.ip);
       if(existing){
         existing.location = r.location;
         existing.idx = r.idx;
-        existing.addedAt = r.addedAt;
+        if(!existing.addedAt || new Date(r.addedAt) > new Date(existing.addedAt)) existing.addedAt = r.addedAt;
         existing.ids.push(r.idx);
       } else {
         g.ipMap.set(r.ip, {location:r.location, idx:r.idx, addedAt:r.addedAt, ids:[r.idx]});
       }
     } else if(r.ip || r.location){
       const key = r.ip + '|' + r.location;
-      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, count:0, lastIdx:r.idx, addedAt:r.addedAt, ids:[], labelKey:'unlabeled::'+key});
+      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, count:0, lastIdx:r.idx, addedAt:'', firstAddedAt:'', ids:[], labelKey:'unlabeled::'+key});
       const u = unlabeledMap.get(key);
       u.count++;
       u.ids.push(r.idx);
       u.lastIdx = Math.max(u.lastIdx, r.idx);
-      u.addedAt = r.addedAt;
+      if(r.addedAt){
+        if(!u.firstAddedAt || new Date(r.addedAt) < new Date(u.firstAddedAt)) u.firstAddedAt = r.addedAt;
+        if(!u.addedAt || new Date(r.addedAt) > new Date(u.addedAt)) u.addedAt = r.addedAt;
+      }
     }
   });
 
@@ -2259,7 +2337,8 @@ function buildGroups(){
       username: g.username,
       latestIp: history[0].ip,
       latestLocation: history[0].location,
-      latestAddedAt: history[0].addedAt,
+      latestAddedAt: g.latestAddedAt,
+      firstAddedAt: g.firstAddedAt,
       history
     };
   });
@@ -2332,14 +2411,14 @@ function renderBulkBar(){
 }
 
 function buildCsvLines(userList, unlabeledList){
-  const lines = [['Label','PSN ID','IP','Location','IP History Count','Last Seen'].map(csvEscape).join(',')];
+  const lines = [['Label','PSN ID','IP','Location','IP History Count','First Seen','Last Seen'].map(csvEscape).join(',')];
   userList.forEach(u=>{
     const labelVal = (labels.get(u.username.toLowerCase()) || {}).label || '';
-    lines.push([labelVal, u.username, u.latestIp, u.latestLocation, u.history.length, u.latestAddedAt||''].map(csvEscape).join(','));
+    lines.push([labelVal, u.username, u.latestIp, u.latestLocation, u.history.length, u.firstAddedAt||'', u.latestAddedAt||''].map(csvEscape).join(','));
   });
   unlabeledList.forEach(u=>{
     const labelVal = (labels.get(u.labelKey) || {}).label || '';
-    lines.push([labelVal, '', u.ip, u.location, u.count, u.addedAt||''].map(csvEscape).join(','));
+    lines.push([labelVal, '', u.ip, u.location, u.count, u.firstAddedAt||'', u.addedAt||''].map(csvEscape).join(','));
   });
   return lines;
 }
@@ -2607,6 +2686,7 @@ function render(){
     if(sortKey==='ip'){ va=a.latestIp.toLowerCase(); vb=b.latestIp.toLowerCase(); }
     else if(sortKey==='location'){ va=a.latestLocation.toLowerCase(); vb=b.latestLocation.toLowerCase(); }
     else if(sortKey==='lastSeen'){ va=a.latestAddedAt||''; vb=b.latestAddedAt||''; }
+    else if(sortKey==='firstSeen'){ va=a.firstAddedAt||''; vb=b.firstAddedAt||''; }
     else { va=a.username.toLowerCase(); vb=b.username.toLowerCase(); }
     if(va<vb) return -1*sortDir;
     if(va>vb) return 1*sortDir;
@@ -2657,6 +2737,7 @@ function render(){
           <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
           </td>
+          <td class="last-seen">${formatLastSeen(u.firstAddedAt)}</td>
           <td class="last-seen">${formatLastSeen(u.latestAddedAt)}</td>
         </tr>`;
       if(isExpanded){
@@ -2667,6 +2748,7 @@ function render(){
               <td></td>
               <td>${ipCell(h.ip, h.ids, {hidden: ipHidden.get(h.ip)||false, showEye:true, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
               <td>${locationCell(h.location)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
+              <td></td>
               <td class="last-seen">${formatLastSeen(h.addedAt)}</td>
             </tr>`;
         });
@@ -2685,6 +2767,7 @@ function render(){
           ${th('username','PSN ID')}
           ${th('ip','Latest IP')}
           ${th('location','Latest Location')}
+          ${th('firstSeen','First Seen')}
           ${th('lastSeen','Last Seen')}
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
@@ -2770,7 +2853,7 @@ function render(){
         <table class="unlabeled-table">
           <thead><tr>
             <th class="checkbox-col"><input type="checkbox" id="selectAllUnlabeled" class="row-check" ${allUnlabeledChecked?'checked':''}></th>
-            <th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th><th>Last Seen</th>
+            <th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th><th>First Seen</th><th>Last Seen</th>
           </tr></thead>
           <tbody>
             ${filteredUnlabeled.map(u=>{
@@ -2793,6 +2876,7 @@ function render(){
                 <td>${ipCell(u.ip, u.ids, {hidden: rowHidden, showActions:false, sharedWith:sharedIpUsers(u.ip, '')})}</td>
                 <td>${locationCell(u.location)}</td>
                 <td>${u.count}</td>
+                <td class="last-seen">${formatLastSeen(u.firstAddedAt)}</td>
                 <td class="last-seen">${formatLastSeen(u.addedAt)}</td>
               </tr>
             `;}).join('')}
