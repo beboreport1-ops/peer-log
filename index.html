@@ -2634,6 +2634,32 @@ async function bulkUnlinkSelected(){
   });
 }
 
+async function promptAddPsnIdLink(username){
+  if(!isAdmin()) return;
+  await openModal({
+    title: `Link another PSN ID to ${username}`,
+    fields: [{id:'other', label:'Other PSN ID (must already exist)'}],
+    submitLabel: 'Link',
+    onSubmit: async (vals) => {
+      const other = (vals.other||'').trim();
+      if(!other) return {ok:false, message:'Enter a PSN ID'};
+      if(other.toLowerCase() === username.toLowerCase()) return {ok:false, message:"That's the same PSN ID"};
+      const target = users.find(u => u.username.toLowerCase() === other.toLowerCase());
+      if(!target) return {ok:false, message:'No player with that exact PSN ID exists yet'};
+      const gk = groupKeyOf(username) || groupKeyOf(other) || generateGroupKey();
+      await Promise.all([username, target.username].map(uname => {
+        const key = uname.toLowerCase();
+        const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false};
+        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:gk, groupPrimary:current.groupPrimary});
+        return saveLabelRemote(key, current.label, current.hidden, gk, current.groupPrimary);
+      }));
+      render();
+      showToast(`linked ${username} and ${target.username}`);
+      return {ok:true};
+    }
+  });
+}
+
 async function unlinkOne(username){
   if(!isAdmin()) return;
   const key = username.toLowerCase();
@@ -2671,6 +2697,29 @@ function faceOfGroup(members){
   const primary = members.find(m => (labels.get(m.username.toLowerCase())||{}).groupPrimary);
   if(primary) return primary;
   return [...members].sort((a,b) => new Date(b.latestAddedAt||0) - new Date(a.latestAddedAt||0))[0];
+}
+
+// Since every linked account is the same physical person, the group should
+// show ONE latest IP overall (whichever account/IP was actually seen most
+// recently) rather than the face account's own latest — every other IP,
+// across every linked account, is just history for this one person.
+function groupLatestRecord(members){
+  let best = null;
+  members.forEach(m => {
+    m.history.forEach(h => {
+      if(!best || new Date(h.addedAt||0) > new Date(best.addedAt||0)){
+        best = {ip:h.ip, location:h.location, addedAt:h.addedAt, ids:h.ids};
+      }
+    });
+  });
+  return best;
+}
+function groupFirstAddedAt(members){
+  let earliest = '';
+  members.forEach(m => {
+    if(m.firstAddedAt && (!earliest || new Date(m.firstAddedAt) < new Date(earliest))) earliest = m.firstAddedAt;
+  });
+  return earliest;
 }
 
 function openGroupModal(groupKey){
@@ -2724,6 +2773,7 @@ function openGroupModal(groupKey){
 
   const groupHideBtn = admin ? `<button class="btn warn" id="grpModalHideBtn">Hide Group</button>` : '';
   const groupDelBtn = admin ? `<button class="btn danger" id="grpModalDelBtn">Delete Group</button>` : '';
+  const groupAddBtn = admin ? `<button class="btn" id="grpModalAddBtn">+ Add PSN ID</button>` : '';
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -2734,6 +2784,7 @@ function openGroupModal(groupKey){
         ${members.map(memberBlock).join('')}
       </div>
       <div class="modal-actions">
+        ${groupAddBtn}
         ${groupHideBtn}
         ${groupDelBtn}
         <button class="btn primary" id="grpModalCloseBtn">Close</button>
@@ -2804,6 +2855,12 @@ function openGroupModal(groupKey){
     close();
     selected.add('g::'+groupKey);
     bulkDeleteSelected();
+  });
+  const addBtn = overlay.querySelector('#grpModalAddBtn');
+  if(addBtn) addBtn.addEventListener('click', async ()=>{
+    close();
+    await promptAddPsnIdLink(face.username);
+    if(membersOfGroupKey(groupKey).length >= 2) openGroupModal(groupKey);
   });
 }
 
@@ -3051,13 +3108,16 @@ function render(){
       const addIpBtn = admin
         ? `<button class="icon-btn add-ip-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="add an IP for ${escapeHtml(u.username)}">+ IP</button>`
         : '';
+      const addPsnLinkBtn = admin
+        ? `<button class="icon-btn add-psn-link-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="link another PSN ID as the same person">+ Add PSN ID</button>`
+        : '';
       const nameCopyBtn = u.username ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID" aria-label="copy PSN ID">⧉</button>` : '';
       const uSelKey = userSelKey(u);
       const rowChecked = selected.has(uSelKey) ? 'checked' : '';
       const latestHidden = ipHidden.get(u.latestIp)||false;
       const rowHideBtn = ipHideBtn(u.latestIp, latestHidden);
       const rowDelBtn = ipDelBtn(u.latestIp, u.history[0].ids);
-      const actionGroupContent = `${nameEdit}${addIpBtn}${rowHideBtn}${rowDelBtn}`;
+      const actionGroupContent = `${nameEdit}${addIpBtn}${addPsnLinkBtn}${rowHideBtn}${rowDelBtn}`;
       const actionGroup = (isExpanded && actionGroupContent) ? `<span class="uname-actions">${actionGroupContent}</span>` : '';
       let out = `
         <tr class="main-row has-psn ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
@@ -3089,16 +3149,18 @@ function render(){
     function renderGroupHeaderRow(groupKey, members, uIdx){
       const parity = uIdx % 2 === 0 ? 'row-even' : 'row-odd';
       const face = faceOfGroup(members);
+      const latest = groupLatestRecord(members);
+      const firstSeen = groupFirstAddedAt(members);
       const gSelKey = 'g::'+groupKey;
       const rowChecked = selected.has(gSelKey) ? 'checked' : '';
       return `
         <tr class="main-row has-psn group-header ${parity}" data-group-key="${escapeHtml(groupKey)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(gSelKey)}" ${rowChecked}></td>
           <td><span class="caret">▸</span>${escapeHtml(face.username)}<span class="badge chip-btn chip-accent group-badge" data-group-key="${escapeHtml(groupKey)}">+${members.length-1} account${members.length-1>1?'s':''}</span></td>
-          <td>${ipCell(face.latestIp, [], {hidden: ipHidden.get(face.latestIp)||false, showActions:false, sharedWith:sharedIpUsers(face.latestIp, face.username)})}</td>
-          <td>${locationCell(face.latestLocation)}</td>
-          <td class="last-seen">${formatLastSeen(face.firstAddedAt)}</td>
-          <td class="last-seen">${formatLastSeen(face.latestAddedAt)}</td>
+          <td>${ipCell(latest.ip, [], {hidden: ipHidden.get(latest.ip)||false, showActions:false, sharedWith:sharedIpUsers(latest.ip, face.username)})}</td>
+          <td>${locationCell(latest.location)}</td>
+          <td class="last-seen">${formatLastSeen(firstSeen)}</td>
+          <td class="last-seen">${formatLastSeen(latest.addedAt)}</td>
         </tr>`;
     }
 
@@ -3368,6 +3430,12 @@ function render(){
       btn.addEventListener('click', (e)=>{
         e.stopPropagation();
         promptAddIpToUser(btn.dataset.uname);
+      });
+    });
+    document.querySelectorAll('.add-psn-link-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        promptAddPsnIdLink(btn.dataset.uname);
       });
     });
   }
