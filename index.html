@@ -839,6 +839,13 @@
   tr.hist-row td.ip{color:var(--phosphor-dim);}
   tr.hist-row.newest td{color:var(--text);}
   tr.hist-row.newest td.ip{color:var(--phosphor);text-shadow:0 0 6px rgba(34,197,94,.4);}
+
+  /* ---------- linked PSN ID groups (multiple accounts, same person) ---------- */
+  tr.main-row.group-header td:nth-child(2){font-weight:600;}
+  .badge.group-badge{color:var(--phosphor);}
+  tr.main-row.group-member td:nth-child(2){padding-left:22px;}
+  tr.main-row.group-member td:nth-child(2)::before{content:"└─ ";color:var(--phosphor-mute);}
+  tr.hist-row.group-member td:nth-child(3){padding-left:52px;}
   .hist-tag{
     font-size:8.5px;
     color:var(--obsidian);
@@ -1524,6 +1531,8 @@
     <span class="count" id="bulkCount">0 selected</span>
     <button class="btn" id="bulkExportBtn">Export Selected</button>
     <button class="btn" id="bulkExportTextBtn">Copy as Text</button>
+    <button class="btn" id="bulkLinkBtn" style="display:none;">Link as Same Person</button>
+    <button class="btn" id="bulkUnlinkBtn" style="display:none;">Unlink Selected</button>
     <button class="btn warn" id="bulkHideBtn" style="display:none;">Hide Selected</button>
     <button class="btn" id="bulkUnhideBtn" style="display:none;">Unhide Selected</button>
     <button class="btn danger" id="bulkDeleteBtn" style="display:none;">Delete Selected</button>
@@ -1552,7 +1561,7 @@ let sortKey = 'username';
 let sortDir = 1;
 let expanded = new Set();
 let revealedUnlabeled = new Set();
-let labels = new Map();    // username_key -> {label, hidden}
+let labels = new Map();    // username_key -> {label, hidden, groupKey}
 let ipHidden = new Map();  // ip -> boolean
 let selected = new Set();  // composite keys of selected rows (users + unlabeled)
 let passwordHash = null;
@@ -1575,6 +1584,8 @@ const bulkBar = document.getElementById('bulkBar');
 const bulkCount = document.getElementById('bulkCount');
 const bulkExportBtn = document.getElementById('bulkExportBtn');
 const bulkExportTextBtn = document.getElementById('bulkExportTextBtn');
+const bulkLinkBtn = document.getElementById('bulkLinkBtn');
+const bulkUnlinkBtn = document.getElementById('bulkUnlinkBtn');
 const bulkHideBtn = document.getElementById('bulkHideBtn');
 const bulkUnhideBtn = document.getElementById('bulkUnhideBtn');
 const bulkDeleteBtn = document.getElementById('bulkDeleteBtn');
@@ -1679,11 +1690,11 @@ const touchRowsTimestamp = (ids) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`
   headers:{'Prefer':'return=minimal'},
   body: JSON.stringify({created_at: new Date().toISOString()})
 });
-const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden');
-const saveLabelRemote = (usernameKey, label, hidden) => sbFetch('peer_labels?on_conflict=username_key', {
+const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden,group_key');
+const saveLabelRemote = (usernameKey, label, hidden, groupKey='') => sbFetch('peer_labels?on_conflict=username_key', {
   method:'POST',
   headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-  body: JSON.stringify([{username_key: usernameKey, label, hidden}])
+  body: JSON.stringify([{username_key: usernameKey, label, hidden, group_key: groupKey || null}])
 });
 const loadIpHidden = () => sbFetch('peer_ip_hidden?select=ip,hidden');
 const saveIpHiddenRemote = (ip, hidden) => sbFetch('peer_ip_hidden?on_conflict=ip', {
@@ -2054,7 +2065,7 @@ async function refreshFromCloud(){
   try{
     const [data, labelData, ipHiddenData] = await Promise.all([loadAllRows(), loadLabels(), loadIpHidden()]);
     rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id, addedAt:r.created_at||''}));
-    labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden}]));
+    labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden, groupKey:l.group_key||''}]));
     ipHidden = new Map((ipHiddenData||[]).map(r => [r.ip, !!r.hidden]));
     buildGroups();
     toolbar.style.display = 'flex';
@@ -2277,25 +2288,33 @@ const COUNTRY_DISPLAY_LIST = [
   'Pakistan','Bangladesh'
 ].sort((a,b)=>a.localeCompare(b));
 
+function getKnownLocations(){
+  const set = new Set();
+  users.forEach(u => u.history.forEach(h => { if(h.location) set.add(h.location); }));
+  unlabeled.forEach(u => { if(u.location) set.add(u.location); });
+  return [...set].sort((a,b) => a.localeCompare(b));
+}
+
 async function promptAddIpToUser(username){
   if(!isAdmin() || !username) return;
+  const knownLocations = getKnownLocations();
   await openModal({
     title: `Add IP for ${username}`,
     fields: [
       {id:'ip', label:'IP address'},
-      {id:'country', label:'Country (optional)', type:'select', options:[
-        {value:'', label:'— select country —'},
-        ...COUNTRY_DISPLAY_LIST.map(c=>({value:c, label:c}))
+      {id:'location', label:'Location (pick a previous one)', type:'select', options:[
+        {value:'', label:'— type manually below instead —'},
+        ...knownLocations.map(l=>({value:l, label:l}))
       ]},
-      {id:'city', label:'City (optional)'}
+      {id:'manualLocation', label:'Or type manually (City, Country)'}
     ],
     submitLabel: 'Add IP',
     onSubmit: async (vals) => {
       const ip = (vals.ip||'').trim();
-      const country = (vals.country||'').trim();
-      const city = (vals.city||'').trim();
+      const manual = (vals.manualLocation||'').trim();
+      const picked = (vals.location||'').trim();
+      const location = manual || picked || '';
       if(!ip) return {ok:false, message:'Enter an IP address'};
-      const location = (city && country) ? `${city}, ${country}` : (city || country || '');
       try{
         const pending = getPendingRows();
         pending.push({username, ip, location});
@@ -2403,12 +2422,31 @@ function matchesQuery(u, q){
   return u.history.some(h => h.ip.toLowerCase().includes(q) || h.location.toLowerCase().includes(q));
 }
 
+// ---------- linked PSN ID groups (multiple accounts, same person) ----------
+function groupKeyOf(username){
+  return (labels.get(username.toLowerCase()) || {}).groupKey || '';
+}
+function membersOfGroupKey(gk){
+  if(!gk) return [];
+  const keys = [];
+  labels.forEach((v, k) => { if(v.groupKey === gk) keys.push(k); });
+  return keys;
+}
+function generateGroupKey(){
+  return 'grp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8);
+}
+
 // ---------- multi-select (bulk export / delete) ----------
 function userSelKey(u){ return 'u::' + u.username.toLowerCase(); }
 function unlabeledSelKey(u){ return u.labelKey; }
 
 function getSelectedUserObjs(){
-  return users.filter(u => selected.has(userSelKey(u)));
+  return users.filter(u => {
+    if(selected.has(userSelKey(u))) return true;
+    const gk = groupKeyOf(u.username);
+    if(gk && selected.has('g::'+gk)) return true;
+    return false;
+  });
 }
 function getSelectedUnlabeledObjs(){
   return unlabeled.filter(u => selected.has(unlabeledSelKey(u)));
@@ -2422,6 +2460,8 @@ function renderBulkBar(){
   bulkDeleteBtn.style.display = admin ? 'inline-block' : 'none';
   bulkHideBtn.style.display = admin ? 'inline-block' : 'none';
   bulkUnhideBtn.style.display = admin ? 'inline-block' : 'none';
+  bulkLinkBtn.style.display = (admin && selUsers.length >= 2) ? 'inline-block' : 'none';
+  bulkUnlinkBtn.style.display = (admin && selUsers.some(u => groupKeyOf(u.username))) ? 'inline-block' : 'none';
   if(!total){
     bulkBar.style.display = 'none';
     return;
@@ -2501,6 +2541,79 @@ function exportSelectedText(){
   }
 }
 
+async function bulkLinkSelected(){
+  if(!isAdmin()) return;
+  const selUsers = getSelectedUserObjs();
+  if(selUsers.length < 2){
+    showToast('select 2 or more PSN IDs to link');
+    return;
+  }
+  await confirmModal({
+    title: `Link ${selUsers.length} PSN IDs as the same person?`,
+    submitLabel: 'Link',
+    danger: false,
+    onConfirm: async () => {
+      // Reuse an existing group key if one of the selected accounts already
+      // has one (so linking a new alt into an existing group works), else
+      // start a fresh group.
+      const existingGk = selUsers.map(u => groupKeyOf(u.username)).find(Boolean);
+      const gk = existingGk || generateGroupKey();
+      await Promise.all(selUsers.map(u => {
+        const key = u.username.toLowerCase();
+        const current = labels.get(key) || {label:'', hidden:false, groupKey:''};
+        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:gk});
+        return saveLabelRemote(key, current.label, current.hidden, gk);
+      }));
+      selected.clear();
+      render();
+      showToast(`linked ${selUsers.length} PSN IDs`);
+    }
+  });
+}
+
+async function bulkUnlinkSelected(){
+  if(!isAdmin()) return;
+  const selUsers = getSelectedUserObjs().filter(u => groupKeyOf(u.username));
+  if(!selUsers.length){
+    showToast('select linked PSN IDs to unlink');
+    return;
+  }
+  await confirmModal({
+    title: `Unlink ${selUsers.length} PSN ID${selUsers.length>1?'s':''}?`,
+    submitLabel: 'Unlink',
+    danger: false,
+    onConfirm: async () => {
+      await Promise.all(selUsers.map(u => {
+        const key = u.username.toLowerCase();
+        const current = labels.get(key) || {label:'', hidden:false, groupKey:''};
+        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:''});
+        return saveLabelRemote(key, current.label, current.hidden, '');
+      }));
+      selected.clear();
+      render();
+      showToast(`unlinked ${selUsers.length} PSN ID${selUsers.length>1?'s':''}`);
+    }
+  });
+}
+
+async function unlinkOne(username){
+  if(!isAdmin()) return;
+  const key = username.toLowerCase();
+  const current = labels.get(key) || {label:'', hidden:false, groupKey:''};
+  if(!current.groupKey) return;
+  await confirmModal({
+    title: `Unlink ${username} from this group?`,
+    submitLabel: 'Unlink',
+    danger: false,
+    onConfirm: async () => {
+      labels.set(key, {label:current.label, hidden:current.hidden, groupKey:''});
+      await saveLabelRemote(key, current.label, current.hidden, '');
+      render();
+      showToast(`unlinked ${username}`);
+    }
+  });
+}
+
 async function bulkDeleteSelected(){
   if(!isAdmin()) return;
   const selUsers = getSelectedUserObjs();
@@ -2544,6 +2657,7 @@ async function bulkSetHidden(hideFlag){
         ipHidden.set(ip, hideFlag);
         return saveIpHiddenRemote(ip, hideFlag);
       }));
+      selected.clear();
       render();
       showToast(`${hideFlag?'hid':'unhid'} ${total} row${total>1?'s':''}`);
     }
@@ -2552,6 +2666,8 @@ async function bulkSetHidden(hideFlag){
 
 bulkExportBtn.addEventListener('click', exportSelectedCSV);
 bulkExportTextBtn.addEventListener('click', exportSelectedText);
+bulkLinkBtn.addEventListener('click', bulkLinkSelected);
+bulkUnlinkBtn.addEventListener('click', bulkUnlinkSelected);
 bulkHideBtn.addEventListener('click', ()=>bulkSetHidden(true));
 bulkUnhideBtn.addEventListener('click', ()=>bulkSetHidden(false));
 bulkDeleteBtn.addEventListener('click', bulkDeleteSelected);
@@ -2664,10 +2780,10 @@ function locationCell(location){
 }
 
 async function saveLabel(key, value){
-  const current = labels.get(key) || {label:'', hidden:false};
-  labels.set(key, {label:value, hidden:current.hidden});
+  const current = labels.get(key) || {label:'', hidden:false, groupKey:''};
+  labels.set(key, {label:value, hidden:current.hidden, groupKey:current.groupKey});
   try{
-    await saveLabelRemote(key, value, current.hidden);
+    await saveLabelRemote(key, value, current.hidden, current.groupKey);
   }catch(e){
     console.error(e);
     showToast('label save failed — check connection', true);
@@ -2728,7 +2844,8 @@ function render(){
     const th = (key,label) => `<th class="${sortKey===key?'sorted':''}" data-key="${key}" tabindex="0" role="button" aria-label="sort by ${label}">${label}${arrow(key)}</th>`;
 
     let rowsHtml = '';
-    list.forEach((u, uIdx) => {
+
+    function renderStandaloneRow(u, uIdx){
       const key = u.username.toLowerCase();
       const isExpanded = expanded.has(key);
       const multi = u.history.length > 1;
@@ -2749,7 +2866,7 @@ function render(){
       const rowDelBtn = ipDelBtn(u.latestIp, u.history[0].ids);
       const actionGroupContent = `${nameEdit}${addIpBtn}${rowHideBtn}${rowDelBtn}`;
       const actionGroup = (isExpanded && actionGroupContent) ? `<span class="uname-actions">${actionGroupContent}</span>` : '';
-      rowsHtml += `
+      let out = `
         <tr class="main-row has-psn ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
           <td><span class="caret">${(multi||admin)?'▸':''}</span>${displayName}${nameCopyBtn}${actionGroup}</td>
@@ -2762,7 +2879,7 @@ function render(){
         </tr>`;
       if(isExpanded){
         u.history.forEach((h, i) => {
-          rowsHtml += `
+          out += `
             <tr class="hist-row ${parity} ${i===0?'newest':''}" style="animation-delay:${Math.min(i*35,250)}ms">
               <td></td>
               <td></td>
@@ -2773,9 +2890,112 @@ function render(){
             </tr>`;
         });
       }
+      return out;
+    }
+
+    // A member row nested inside an expanded linked-account group. No checkbox
+    // (the group's own checkbox covers bulk actions for every member at once)
+    // and no Hide/Delete of its own (Hide Group / Delete Group already cover
+    // the whole group) — just identity actions plus its own IP history.
+    function renderGroupMemberRow(u, parity){
+      const key = u.username.toLowerCase();
+      const isExpanded = expanded.has(key);
+      const multi = u.history.length > 1;
+      const displayName = escapeHtml(u.username);
+      const allHistIds = u.history.flatMap(h=>h.ids);
+      const nameEdit = admin
+        ? `<button class="icon-btn edit-psn-btn chip-btn" data-ids="${allHistIds.join(',')}" data-uname="${escapeHtml(u.username)}" title="edit PSN ID">Edit</button>`
+        : '';
+      const addIpBtn = admin
+        ? `<button class="icon-btn add-ip-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="add an IP for ${escapeHtml(u.username)}">+ IP</button>`
+        : '';
+      const unlinkBtn = admin
+        ? `<button class="icon-btn unlink-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="unlink from this group">Unlink</button>`
+        : '';
+      const nameCopyBtn = `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID" aria-label="copy PSN ID">⧉</button>`;
+      const actionGroupContent = `${nameEdit}${addIpBtn}${unlinkBtn}`;
+      const actionGroup = (isExpanded && actionGroupContent) ? `<span class="uname-actions">${actionGroupContent}</span>` : '';
+      let out = `
+        <tr class="main-row has-psn group-member ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
+          <td class="checkbox-col"></td>
+          <td><span class="caret">${(multi||admin)?'▸':''}</span>${displayName}${nameCopyBtn}${actionGroup}</td>
+          <td>${ipCell(u.latestIp, u.history[0].ids, {hidden: ipHidden.get(u.latestIp)||false, showActions:false, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
+          <td>${locationCell(u.latestLocation)}
+            ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
+          </td>
+          <td class="last-seen">${formatLastSeen(u.firstAddedAt)}</td>
+          <td class="last-seen">${formatLastSeen(u.latestAddedAt)}</td>
+        </tr>`;
+      if(isExpanded){
+        u.history.forEach((h, i) => {
+          out += `
+            <tr class="hist-row group-member ${parity} ${i===0?'newest':''}" style="animation-delay:${Math.min(i*35,250)}ms">
+              <td></td>
+              <td></td>
+              <td>${ipCell(h.ip, h.ids, {hidden: ipHidden.get(h.ip)||false, showEye:true, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
+              <td>${locationCell(h.location)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
+              <td></td>
+              <td class="last-seen">${formatLastSeen(h.addedAt)}</td>
+            </tr>`;
+        });
+      }
+      return out;
+    }
+
+    function renderGroupHeaderRow(groupKey, members, uIdx){
+      const parity = uIdx % 2 === 0 ? 'row-even' : 'row-odd';
+      const face = members[0];
+      const isGroupExpanded = expanded.has('grp:'+groupKey);
+      const gSelKey = 'g::'+groupKey;
+      const rowChecked = selected.has(gSelKey) ? 'checked' : '';
+      const groupHideBtn = admin
+        ? `<button class="icon-btn group-hide-btn chip-btn chip-warn" data-gk="${escapeHtml(groupKey)}" title="hide every IP for every account in this group">Hide Group</button>`
+        : '';
+      const groupDelBtn = admin
+        ? `<button class="icon-btn group-del-btn chip-btn chip-icon chip-danger" data-gk="${escapeHtml(groupKey)}" title="delete every account in this group">Delete Group</button>`
+        : '';
+      const actionGroupContent = `${groupHideBtn}${groupDelBtn}`;
+      const actionGroup = (isGroupExpanded && actionGroupContent) ? `<span class="uname-actions">${actionGroupContent}</span>` : '';
+      let out = `
+        <tr class="main-row has-psn group-header ${parity} ${isGroupExpanded?'expanded':''}" data-group-key="${escapeHtml(groupKey)}">
+          <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(gSelKey)}" ${rowChecked}></td>
+          <td><span class="caret">▸</span>${escapeHtml(face.username)}<span class="badge chip-btn chip-accent group-badge" data-group-key="${escapeHtml(groupKey)}">+${members.length-1} account${members.length-1>1?'s':''}</span>${actionGroup}</td>
+          <td>${ipCell(face.latestIp, [], {hidden: ipHidden.get(face.latestIp)||false, showActions:false, sharedWith:sharedIpUsers(face.latestIp, face.username)})}</td>
+          <td>${locationCell(face.latestLocation)}</td>
+          <td class="last-seen">${formatLastSeen(face.firstAddedAt)}</td>
+          <td class="last-seen">${formatLastSeen(face.latestAddedAt)}</td>
+        </tr>`;
+      if(isGroupExpanded){
+        members.forEach(m => { out += renderGroupMemberRow(m, parity); });
+      }
+      return out;
+    }
+
+    const seenGroups = new Set();
+    const renderedSelKeys = [];
+    const byUsernameLower = new Map(users.map(x=>[x.username.toLowerCase(), x]));
+    list.forEach((u, uIdx) => {
+      const gk = groupKeyOf(u.username);
+      if(gk){
+        if(seenGroups.has(gk)) return;
+        const memberKeys = membersOfGroupKey(gk);
+        const members = memberKeys.map(k=>byUsernameLower.get(k)).filter(Boolean);
+        if(members.length < 2){
+          rowsHtml += renderStandaloneRow(u, uIdx);
+          renderedSelKeys.push(userSelKey(u));
+          return;
+        }
+        seenGroups.add(gk);
+        members.sort((a,b) => new Date(b.latestAddedAt||0) - new Date(a.latestAddedAt||0));
+        rowsHtml += renderGroupHeaderRow(gk, members, uIdx);
+        renderedSelKeys.push('g::'+gk);
+      } else {
+        rowsHtml += renderStandaloneRow(u, uIdx);
+        renderedSelKeys.push(userSelKey(u));
+      }
     });
 
-    const allUserSelKeys = list.map(userSelKey);
+    const allUserSelKeys = renderedSelKeys;
     const allUsersChecked = allUserSelKeys.length>0 && allUserSelKeys.every(k=>selected.has(k));
     const someUsersChecked = allUserSelKeys.some(k=>selected.has(k));
     const usersIndeterminate = someUsersChecked && !allUsersChecked;
@@ -2838,7 +3058,14 @@ function render(){
     mainHolder.querySelectorAll('.main-row').forEach(tr=>{
       tr.addEventListener('click', (e)=>{
         if(e.target.closest('.badge') || e.target.closest('.icon-btn') || e.target.closest('.label-input') || e.target.closest('.row-check')) return;
+        if(tr.dataset.groupKey){
+          const gk = 'grp:'+tr.dataset.groupKey;
+          if(expanded.has(gk)) expanded.delete(gk); else expanded.add(gk);
+          render();
+          return;
+        }
         const key = tr.dataset.key;
+        if(!key) return;
         if(expanded.has(key)) expanded.delete(key);
         else expanded.add(key);
         render();
@@ -2847,10 +3074,36 @@ function render(){
     mainHolder.querySelectorAll('.badge').forEach(b=>{
       b.addEventListener('click', (e)=>{
         e.stopPropagation();
+        if(b.dataset.groupKey){
+          const gk = 'grp:'+b.dataset.groupKey;
+          if(expanded.has(gk)) expanded.delete(gk); else expanded.add(gk);
+          render();
+          return;
+        }
         const key = b.dataset.key;
         if(expanded.has(key)) expanded.delete(key);
         else expanded.add(key);
         render();
+      });
+    });
+    mainHolder.querySelectorAll('.group-hide-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        selected.add('g::'+btn.dataset.gk);
+        bulkSetHidden(true);
+      });
+    });
+    mainHolder.querySelectorAll('.group-del-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        selected.add('g::'+btn.dataset.gk);
+        bulkDeleteSelected();
+      });
+    });
+    mainHolder.querySelectorAll('.unlink-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        unlinkOne(btn.dataset.uname);
       });
     });
   }
