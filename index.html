@@ -311,7 +311,7 @@
     background:var(--panel);
     border:1px solid var(--line-2);
     color:var(--phosphor-dim);
-    padding:9px 16px;
+    padding:9px 18px;
     font-family:var(--mono);
     font-size:10.5px;
     letter-spacing:.14em;
@@ -1137,7 +1137,7 @@
   }
   .modal-box h3::before{content:"> ";color:var(--phosphor);}
 
-  .group-modal-box{max-width:520px;}
+  .group-modal-box{max-width:680px;width:92vw;}
   .group-modal-scroll{max-height:60vh;overflow-y:auto;padding-right:4px;}
   .group-section-label{
     font-size:11px;
@@ -1245,10 +1245,10 @@
     box-shadow:0 0 0 1px var(--danger), 0 0 12px var(--danger-glow), inset 0 0 0 1px var(--danger-border-soft);
   }
   .modal-error{color:var(--danger);font-size:10.5px;margin:0 0 12px;display:none;letter-spacing:.1em;text-transform:uppercase;}
-  .modal-actions{display:flex;gap:10px;justify-content:flex-end;padding-top:4px;}
+  .modal-actions{display:flex;gap:10px;justify-content:flex-end;padding-top:4px;flex-wrap:wrap;}
   /* modal buttons inherit .btn focus-visible ring + pressed state;
      scope tightens their visual weight so both actions look paired */
-  .modal-actions .btn{min-width:96px;}
+  .modal-actions .btn{min-width:96px;white-space:nowrap;}
   .modal-actions .btn:focus-visible{z-index:1;}
   .modal-danger .modal-actions .modal-cancel:focus-visible{
     border-color:var(--phosphor);
@@ -2808,7 +2808,11 @@ function openGroupModal(groupKey){
         <div class="group-section-label">IPs</div>
         <div class="group-section-sublabel">Latest IP</div>
         ${latest ? ipRow(latest, 'latest') : '<div class="group-ip-empty">—</div>'}
-        ${rest.length ? `<div class="group-section-sublabel">IP History</div>${rest.map(h=>ipRow(h)).join('')}` : ''}
+        ${rest.length ? `
+          <div class="group-section-sublabel">IP History</div>
+          <button class="chip-btn chip-ghost" id="grpShowHistoryBtn">Show More (${rest.length})</button>
+          <div id="grpIpHistoryList" style="display:none;">${rest.map(h=>ipRow(h)).join('')}</div>
+        ` : ''}
       </div>
       <div class="modal-actions">
         ${groupAddBtn}
@@ -2822,6 +2826,17 @@ function openGroupModal(groupKey){
   function close(){ overlay.remove(); }
   overlay.addEventListener('click', e => { if(e.target===overlay) close(); });
   overlay.querySelector('#grpModalCloseBtn').addEventListener('click', close);
+
+  const showHistoryBtn = overlay.querySelector('#grpShowHistoryBtn');
+  const historyList = overlay.querySelector('#grpIpHistoryList');
+  if(showHistoryBtn && historyList){
+    showHistoryBtn.addEventListener('click', ()=>{
+      const isHidden = historyList.style.display === 'none';
+      historyList.style.display = isHidden ? 'flex' : 'none';
+      historyList.style.flexDirection = 'column';
+      showHistoryBtn.textContent = isHidden ? `Hide (${rest.length})` : `Show More (${rest.length})`;
+    });
+  }
 
   overlay.querySelectorAll('.copy-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> copyToClipboard(btn.dataset.copy, btn));
