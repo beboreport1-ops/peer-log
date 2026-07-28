@@ -1722,11 +1722,11 @@ const touchRowsTimestamp = (ids) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`
   headers:{'Prefer':'return=minimal'},
   body: JSON.stringify({created_at: new Date().toISOString()})
 });
-const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden,group_key');
-const saveLabelRemote = (usernameKey, label, hidden, groupKey='') => sbFetch('peer_labels?on_conflict=username_key', {
+const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden,group_key,group_primary');
+const saveLabelRemote = (usernameKey, label, hidden, groupKey='', groupPrimary=false) => sbFetch('peer_labels?on_conflict=username_key', {
   method:'POST',
   headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-  body: JSON.stringify([{username_key: usernameKey, label, hidden, group_key: groupKey || null}])
+  body: JSON.stringify([{username_key: usernameKey, label, hidden, group_key: groupKey || null, group_primary: !!groupPrimary}])
 });
 const loadIpHidden = () => sbFetch('peer_ip_hidden?select=ip,hidden');
 const saveIpHiddenRemote = (ip, hidden) => sbFetch('peer_ip_hidden?on_conflict=ip', {
@@ -2097,7 +2097,7 @@ async function refreshFromCloud(){
   try{
     const [data, labelData, ipHiddenData] = await Promise.all([loadAllRows(), loadLabels(), loadIpHidden()]);
     rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id, addedAt:r.created_at||''}));
-    labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden, groupKey:l.group_key||''}]));
+    labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden, groupKey:l.group_key||'', groupPrimary:!!l.group_primary}]));
     ipHidden = new Map((ipHiddenData||[]).map(r => [r.ip, !!r.hidden]));
     buildGroups();
     toolbar.style.display = 'flex';
@@ -2430,7 +2430,12 @@ function buildGroups(){
 function sharedIpUsers(ip, excludeUsername){
   const set = ipToUsers.get(ip);
   if(!set || set.size < 2) return [];
-  return [...set].filter(n => n.toLowerCase() !== (excludeUsername||'').toLowerCase());
+  const excludeGk = groupKeyOf(excludeUsername||'');
+  return [...set].filter(n => {
+    if(n.toLowerCase() === (excludeUsername||'').toLowerCase()) return false;
+    if(excludeGk && groupKeyOf(n) === excludeGk) return false; // already linked as the same person
+    return true;
+  });
 }
 
 // ---------- link unlabeled IP to an existing PSN ID (matched by country) ----------
@@ -2593,9 +2598,9 @@ async function bulkLinkSelected(){
       const gk = existingGk || generateGroupKey();
       await Promise.all(selUsers.map(u => {
         const key = u.username.toLowerCase();
-        const current = labels.get(key) || {label:'', hidden:false, groupKey:''};
-        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:gk});
-        return saveLabelRemote(key, current.label, current.hidden, gk);
+        const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false};
+        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:gk, groupPrimary:current.groupPrimary});
+        return saveLabelRemote(key, current.label, current.hidden, gk, current.groupPrimary);
       }));
       selected.clear();
       render();
@@ -2619,8 +2624,8 @@ async function bulkUnlinkSelected(){
       await Promise.all(selUsers.map(u => {
         const key = u.username.toLowerCase();
         const current = labels.get(key) || {label:'', hidden:false, groupKey:''};
-        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:''});
-        return saveLabelRemote(key, current.label, current.hidden, '');
+        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:'', groupPrimary:false});
+        return saveLabelRemote(key, current.label, current.hidden, '', false);
       }));
       selected.clear();
       render();
@@ -2639,12 +2644,33 @@ async function unlinkOne(username){
     submitLabel: 'Unlink',
     danger: false,
     onConfirm: async () => {
-      labels.set(key, {label:current.label, hidden:current.hidden, groupKey:''});
-      await saveLabelRemote(key, current.label, current.hidden, '');
+      labels.set(key, {label:current.label, hidden:current.hidden, groupKey:'', groupPrimary:false});
+      await saveLabelRemote(key, current.label, current.hidden, '', false);
       render();
       showToast(`unlinked ${username}`);
     }
   });
+}
+
+async function setGroupPrimary(groupKey, username){
+  if(!isAdmin()) return;
+  const memberKeys = membersOfGroupKey(groupKey);
+  await Promise.all(memberKeys.map(k => {
+    const current = labels.get(k) || {label:'', hidden:false, groupKey, groupPrimary:false};
+    const isThisOne = (k === username.toLowerCase());
+    labels.set(k, {label:current.label, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:isThisOne});
+    return saveLabelRemote(k, current.label, current.hidden, current.groupKey, isThisOne);
+  }));
+  render();
+  showToast(`${username} is now shown on the main row`);
+}
+
+// Face of a linked group: whichever member is explicitly marked as primary,
+// falling back to whoever was most recently active if nobody's been chosen.
+function faceOfGroup(members){
+  const primary = members.find(m => (labels.get(m.username.toLowerCase())||{}).groupPrimary);
+  if(primary) return primary;
+  return [...members].sort((a,b) => new Date(b.latestAddedAt||0) - new Date(a.latestAddedAt||0))[0];
 }
 
 function openGroupModal(groupKey){
@@ -2655,8 +2681,10 @@ function openGroupModal(groupKey){
     .sort((a,b) => new Date(b.latestAddedAt||0) - new Date(a.latestAddedAt||0));
   if(!members.length){ showToast('this group no longer has any accounts'); return; }
 
+  const face = faceOfGroup(members);
   const memberBlock = (u) => {
     const key = u.username.toLowerCase();
+    const isFace = u.username.toLowerCase() === face.username.toLowerCase();
     const editBtn = admin
       ? `<button class="icon-btn edit-psn-btn chip-btn" data-ids="${u.history.flatMap(h=>h.ids).join(',')}" data-uname="${escapeHtml(u.username)}" title="edit PSN ID">Edit</button>`
       : '';
@@ -2666,6 +2694,11 @@ function openGroupModal(groupKey){
     const unlinkBtn = admin
       ? `<button class="icon-btn unlink-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="unlink from this group">Unlink</button>`
       : '';
+    const faceBtn = admin
+      ? (isFace
+          ? `<span class="chip-btn chip-accent ip-tag" title="shown on the main row">★ Face</span>`
+          : `<button class="icon-btn set-face-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="show this account on the main row">Set as Face</button>`)
+      : (isFace ? `<span class="chip-btn chip-accent ip-tag">★ Face</span>` : '');
     const copyBtn = `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID">⧉</button>`;
     const ipRows = u.history.map((h, i) => `
       <div class="group-ip-row">
@@ -2682,6 +2715,7 @@ function openGroupModal(groupKey){
         <div class="group-member-head">
           <span class="group-member-name">${escapeHtml(u.username)}</span>
           ${copyBtn}
+          ${faceBtn}
           <span class="uname-actions">${editBtn}${addIpBtn}${unlinkBtn}</span>
         </div>
         <div class="group-ip-list">${ipRows}</div>
@@ -2735,6 +2769,13 @@ function openGroupModal(groupKey){
       await unlinkOne(btn.dataset.uname);
       const stillLinked = membersOfGroupKey(groupKey).length >= 2;
       if(stillLinked) openGroupModal(groupKey);
+    });
+  });
+  overlay.querySelectorAll('.set-face-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      close();
+      await setGroupPrimary(groupKey, btn.dataset.uname);
+      openGroupModal(groupKey);
     });
   });
   overlay.querySelectorAll('.eye-btn').forEach(btn=>{
@@ -2932,10 +2973,10 @@ function locationCell(location){
 }
 
 async function saveLabel(key, value){
-  const current = labels.get(key) || {label:'', hidden:false, groupKey:''};
-  labels.set(key, {label:value, hidden:current.hidden, groupKey:current.groupKey});
+  const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false};
+  labels.set(key, {label:value, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:current.groupPrimary});
   try{
-    await saveLabelRemote(key, value, current.hidden, current.groupKey);
+    await saveLabelRemote(key, value, current.hidden, current.groupKey, current.groupPrimary);
   }catch(e){
     console.error(e);
     showToast('label save failed — check connection', true);
@@ -3047,7 +3088,7 @@ function render(){
 
     function renderGroupHeaderRow(groupKey, members, uIdx){
       const parity = uIdx % 2 === 0 ? 'row-even' : 'row-odd';
-      const face = members[0];
+      const face = faceOfGroup(members);
       const gSelKey = 'g::'+groupKey;
       const rowChecked = selected.has(gSelKey) ? 'checked' : '';
       return `
