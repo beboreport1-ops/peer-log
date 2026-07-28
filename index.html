@@ -1145,7 +1145,7 @@
     text-transform:uppercase;
     color:var(--phosphor);
     font-weight:700;
-    margin:18px 0 8px;
+    margin:22px 0 12px;
     padding-bottom:6px;
     border-bottom:1px solid var(--phosphor-dim);
   }
@@ -1155,19 +1155,21 @@
     letter-spacing:.12em;
     text-transform:uppercase;
     color:var(--phosphor-mute);
-    margin:12px 0 6px;
+    margin:16px 0 8px;
   }
+  #grpShowHistoryBtn{margin-bottom:14px;}
   .group-psn-row{
     display:flex;
-    align-items:center;
-    flex-wrap:wrap;
-    gap:8px;
-    padding:9px 10px;
+    flex-direction:column;
+    gap:10px;
+    padding:12px;
     border:1px solid var(--line-2);
     background:rgba(0,0,0,.25);
-    margin-bottom:8px;
+    margin-bottom:10px;
   }
   .group-psn-row:last-of-type{margin-bottom:0;}
+  .group-psn-name-line{display:flex;align-items:center;gap:8px;}
+  .group-psn-actions-line{display:flex;align-items:center;flex-wrap:wrap;gap:8px;}
   .group-member-name{
     font-size:13px;
     font-weight:700;
@@ -2769,10 +2771,14 @@ function openGroupModal(groupKey){
     const copyBtn = `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID">⧉</button>`;
     return `
       <div class="group-psn-row">
-        <span class="group-member-name">${escapeHtml(u.username)}</span>
-        ${copyBtn}
-        ${faceBtn}
-        <span class="uname-actions">${editBtn}${addIpBtn}${unlinkBtn}</span>
+        <div class="group-psn-name-line">
+          <span class="group-member-name">${escapeHtml(u.username)}</span>
+          ${copyBtn}
+        </div>
+        <div class="group-psn-actions-line">
+          ${faceBtn}
+          ${editBtn}${addIpBtn}${unlinkBtn}
+        </div>
       </div>`;
   };
 
