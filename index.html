@@ -2265,20 +2265,40 @@ async function openAddRowManual(){
     }
   });
 }
+const COUNTRY_DISPLAY_LIST = [
+  'United States','United Kingdom','Peru','New Zealand','Austria','Puerto Rico',
+  'Saudi Arabia','Canada','Australia','Germany','France','Spain','Italy',
+  'Netherlands','Brazil','Mexico','Japan','South Korea','China','India',
+  'Russia','Sweden','Norway','Denmark','Finland','Poland','Portugal','Ireland',
+  'Belgium','Switzerland','United Arab Emirates','Turkey','Egypt','South Africa',
+  'Argentina','Chile','Colombia','Philippines','Indonesia','Thailand','Vietnam',
+  'Malaysia','Singapore','Israel','Greece','Romania','Ukraine','Czech Republic',
+  'Hungary','Kuwait','Qatar','Bahrain','Oman','Jordan','Lebanon','Iraq',
+  'Pakistan','Bangladesh'
+].sort((a,b)=>a.localeCompare(b));
+
 async function promptAddIpToUser(username){
   if(!isAdmin() || !username) return;
   await openModal({
     title: `Add IP for ${username}`,
     fields: [
-      {id:'ip', label:'IP address'}
+      {id:'ip', label:'IP address'},
+      {id:'country', label:'Country (optional)', type:'select', options:[
+        {value:'', label:'— select country —'},
+        ...COUNTRY_DISPLAY_LIST.map(c=>({value:c, label:c}))
+      ]},
+      {id:'city', label:'City (optional)'}
     ],
     submitLabel: 'Add IP',
     onSubmit: async (vals) => {
       const ip = (vals.ip||'').trim();
+      const country = (vals.country||'').trim();
+      const city = (vals.city||'').trim();
       if(!ip) return {ok:false, message:'Enter an IP address'};
+      const location = (city && country) ? `${city}, ${country}` : (city || country || '');
       try{
         const pending = getPendingRows();
-        pending.push({username, ip, location:''});
+        pending.push({username, ip, location});
         setPendingRows(pending);
         await flushPendingUploads();
         await refreshFromCloud();
