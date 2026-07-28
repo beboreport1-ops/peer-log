@@ -2657,24 +2657,38 @@ async function promptAddPsnIdLink(username){
   if(!isAdmin()) return;
   await openModal({
     title: `Link another PSN ID to ${username}`,
-    fields: [{id:'other', label:'Other PSN ID (must already exist)'}],
+    fields: [{id:'other', label:'Other PSN ID'}],
     submitLabel: 'Link',
     onSubmit: async (vals) => {
       const other = (vals.other||'').trim();
       if(!other) return {ok:false, message:'Enter a PSN ID'};
       if(other.toLowerCase() === username.toLowerCase()) return {ok:false, message:"That's the same PSN ID"};
-      const target = users.find(u => u.username.toLowerCase() === other.toLowerCase());
-      if(!target) return {ok:false, message:'No player with that exact PSN ID exists yet'};
-      const gk = groupKeyOf(username) || groupKeyOf(other) || generateGroupKey();
-      await Promise.all([username, target.username].map(uname => {
-        const key = uname.toLowerCase();
-        const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false};
-        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:gk, groupPrimary:current.groupPrimary});
-        return saveLabelRemote(key, current.label, current.hidden, gk, current.groupPrimary);
-      }));
-      render();
-      showToast(`linked ${username} and ${target.username}`);
-      return {ok:true};
+      try{
+        let target = users.find(u => u.username.toLowerCase() === other.toLowerCase());
+        if(!target){
+          // Brand new PSN ID with no IP data yet — create a placeholder row
+          // for it so it exists as its own account, then link the two.
+          const pending = getPendingRows();
+          pending.push({username: other, ip:'', location:''});
+          setPendingRows(pending);
+          await flushPendingUploads();
+          await refreshFromCloud();
+          target = users.find(u => u.username.toLowerCase() === other.toLowerCase());
+          if(!target) return {ok:false, message:'Could not create that PSN ID — check connection'};
+        }
+        const gk = groupKeyOf(username) || groupKeyOf(other) || generateGroupKey();
+        await Promise.all([username, target.username].map(uname => {
+          const key = uname.toLowerCase();
+          const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false};
+          labels.set(key, {label:current.label, hidden:current.hidden, groupKey:gk, groupPrimary:current.groupPrimary});
+          return saveLabelRemote(key, current.label, current.hidden, gk, current.groupPrimary);
+        }));
+        render();
+        showToast(`linked ${username} and ${target.username}`);
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message:'Link failed — check connection'};
+      }
     }
   });
 }
@@ -2791,12 +2805,12 @@ function openGroupModal(groupKey){
   const ipRow = (h, tag) => `
     <div class="group-ip-row">
       <div class="group-ip-main">
-        <span class="ip">${escapeHtml(ipHidden.get(h.ip) ? maskIp(h.ip) : h.ip)}</span>
-        <button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(h.ip)}" title="copy IP">⧉</button>
+        <span class="ip">${h.ip ? escapeHtml(ipHidden.get(h.ip) ? maskIp(h.ip) : h.ip) : '—'}</span>
+        ${h.ip?`<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(h.ip)}" title="copy IP">⧉</button>`:''}
         ${tag?`<span class="hist-tag">${tag}</span>`:''}
       </div>
       <div class="group-ip-sub">${locationCell(h.location)} · ${formatLastSeen(h.addedAt)} · <span class="group-ip-owner">${escapeHtml(h.username)}</span></div>
-      ${admin?`<div class="group-ip-actions">${ipHideBtn(h.ip, ipHidden.get(h.ip)||false)}${ipDelBtn(h.ip, h.ids)}</div>`:''}
+      ${(admin && h.ip)?`<div class="group-ip-actions">${ipHideBtn(h.ip, ipHidden.get(h.ip)||false)}${ipDelBtn(h.ip, h.ids)}</div>`:''}
     </div>`;
 
   const groupHideBtn = admin ? `<button class="btn warn" id="grpModalHideBtn">Hide Group</button>` : '';
