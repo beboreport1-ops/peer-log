@@ -2403,9 +2403,10 @@ function buildGroups(){
         existing.location = r.location;
         existing.idx = r.idx;
         if(!existing.addedAt || new Date(r.addedAt) > new Date(existing.addedAt)) existing.addedAt = r.addedAt;
+        if(!existing.firstAddedAt || new Date(r.addedAt) < new Date(existing.firstAddedAt)) existing.firstAddedAt = r.addedAt;
         existing.ids.push(r.idx);
       } else {
-        g.ipMap.set(r.ip, {location:r.location, idx:r.idx, addedAt:r.addedAt, ids:[r.idx]});
+        g.ipMap.set(r.ip, {location:r.location, idx:r.idx, addedAt:r.addedAt, firstAddedAt:r.addedAt, ids:[r.idx]});
       }
     } else if(r.ip || r.location){
       const key = r.ip + '|' + r.location;
@@ -2422,14 +2423,14 @@ function buildGroups(){
   });
 
   users = [...map.values()].map(g => {
-    const history = [...g.ipMap.entries()].map(([ip, v]) => ({ip, location:v.location, idx:v.idx, addedAt:v.addedAt, ids:v.ids}));
+    const history = [...g.ipMap.entries()].map(([ip, v]) => ({ip, location:v.location, idx:v.idx, addedAt:v.addedAt, firstAddedAt:v.firstAddedAt, ids:v.ids}));
     history.sort((a,b) => b.idx - a.idx);
     return {
       username: g.username,
       latestIp: history[0].ip,
       latestLocation: history[0].location,
       latestAddedAt: g.latestAddedAt,
-      firstAddedAt: g.firstAddedAt,
+      firstAddedAt: history[0].firstAddedAt,
       history
     };
   });
@@ -2740,18 +2741,11 @@ function groupLatestRecord(members){
   members.forEach(m => {
     m.history.forEach(h => {
       if(!best || new Date(h.addedAt||0) > new Date(best.addedAt||0)){
-        best = {ip:h.ip, location:h.location, addedAt:h.addedAt, ids:h.ids};
+        best = {ip:h.ip, location:h.location, addedAt:h.addedAt, firstAddedAt:h.firstAddedAt, ids:h.ids};
       }
     });
   });
   return best;
-}
-function groupFirstAddedAt(members){
-  let earliest = '';
-  members.forEach(m => {
-    if(m.firstAddedAt && (!earliest || new Date(m.firstAddedAt) < new Date(earliest))) earliest = m.firstAddedAt;
-  });
-  return earliest;
 }
 
 function openGroupModal(groupKey){
@@ -3199,7 +3193,7 @@ function render(){
               <td></td>
               <td>${ipCell(h.ip, h.ids, {hidden: ipHidden.get(h.ip)||false, showEye:true, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
               <td>${locationCell(h.location)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
-              <td></td>
+              <td class="last-seen">${formatLastSeen(h.firstAddedAt)}</td>
               <td class="last-seen">${formatLastSeen(h.addedAt)}</td>
             </tr>`;
         });
@@ -3211,7 +3205,7 @@ function render(){
       const parity = uIdx % 2 === 0 ? 'row-even' : 'row-odd';
       const face = faceOfGroup(members);
       const latest = groupLatestRecord(members);
-      const firstSeen = groupFirstAddedAt(members);
+      const firstSeen = latest ? latest.firstAddedAt : '';
       const gSelKey = 'g::'+groupKey;
       const rowChecked = selected.has(gSelKey) ? 'checked' : '';
       return `
