@@ -1573,7 +1573,7 @@
   <button class="btn" id="addRowBtn" style="display:none;margin-bottom:14px;">+ Add row manually</button>
 
   <div class="toolbar" id="toolbar" style="display:none;">
-    <input class="search" id="search" placeholder="filter by PSN ID, ip, or location...">
+    <input class="search" id="search" placeholder="filter by PSN ID...">
     <button class="btn primary" id="exportBtn">Export filtered CSV</button>
     <button class="btn" id="changePassBtn" style="display:none;">Change Password</button>
   </div>
@@ -2475,8 +2475,7 @@ function candidatesForCountry(location){
 
 function matchesQuery(u, q){
   if(!q) return true;
-  if(u.username.toLowerCase().includes(q)) return true;
-  return u.history.some(h => h.ip.toLowerCase().includes(q) || h.location.toLowerCase().includes(q));
+  return u.username.toLowerCase().includes(q);
 }
 
 // ---------- linked PSN ID groups (multiple accounts, same person) ----------
@@ -3339,9 +3338,7 @@ function render(){
     });
   }
 
-  const filteredUnlabeled = unlabeled.filter(u =>
-    !q || u.ip.toLowerCase().includes(q) || u.location.toLowerCase().includes(q)
-  );
+  const filteredUnlabeled = unlabeled.filter(u => !q);
 
   if(!filteredUnlabeled.length){
     unlabeledHolder.innerHTML = '';
@@ -3512,9 +3509,7 @@ function csvEscape(v){
 function exportFilteredCSV(){
   const q = search.value.trim().toLowerCase();
   const list = users.filter(u => matchesQuery(u, q));
-  const filteredUnlabeled = unlabeled.filter(u =>
-    !q || u.ip.toLowerCase().includes(q) || u.location.toLowerCase().includes(q)
-  );
+  const filteredUnlabeled = unlabeled.filter(u => !q);
 
   if(!list.length && !filteredUnlabeled.length){
     showToast('nothing to export');
