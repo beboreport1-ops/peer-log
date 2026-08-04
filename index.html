@@ -557,6 +557,22 @@
     gap:10px;
     font-weight:500;
   }
+  .fav-block{margin-bottom:20px;}
+  .fav-star{color:var(--phosphor);}
+  .fav-table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--phosphor-dim);font-size:12px;font-family:var(--mono);}
+  .fav-table thead th{
+    text-align:left;
+    padding:8px 12px;
+    font-size:10px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--phosphor-mute);
+    border-bottom:1px solid var(--phosphor-dim);
+  }
+  .fav-table tbody td{padding:9px 12px;border-bottom:1px solid var(--line-2);vertical-align:middle;}
+  .fav-table tbody tr:last-child td{border-bottom:none;}
+  .fav-row{cursor:pointer;transition:background .1s;}
+  .fav-row:hover td{background:rgba(34,197,94,.08);}
   .block-title::before{
     content:"//";
     color:var(--phosphor);
@@ -1564,6 +1580,8 @@
     <div class="count" id="count"><b>0</b>players loaded</div>
   </header>
 
+  <div id="favoritesHolder"></div>
+
   <label class="dropzone" id="dropzone" style="display:none;">
     <input type="file" id="fileInput" accept=".csv" multiple>
     <p class="main">Drop <span class="accent">.csv</span> file(s) here, or click to browse</p>
@@ -1627,6 +1645,7 @@ const fileInput = document.getElementById('fileInput');
 const toolbar = document.getElementById('toolbar');
 const search = document.getElementById('search');
 const mainHolder = document.getElementById('mainHolder');
+const favoritesHolder = document.getElementById('favoritesHolder');
 const unlabeledHolder = document.getElementById('unlabeledHolder');
 const countEl = document.getElementById('count');
 const exportBtn = document.getElementById('exportBtn');
@@ -1741,11 +1760,11 @@ const touchRowsTimestamp = (ids) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`
   headers:{'Prefer':'return=minimal'},
   body: JSON.stringify({created_at: new Date().toISOString()})
 });
-const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden,group_key,group_primary');
-const saveLabelRemote = (usernameKey, label, hidden, groupKey='', groupPrimary=false) => sbFetch('peer_labels?on_conflict=username_key', {
+const loadLabels = () => sbFetch('peer_labels?select=username_key,label,hidden,group_key,group_primary,favorite');
+const saveLabelRemote = (usernameKey, label, hidden, groupKey='', groupPrimary=false, favorite=false) => sbFetch('peer_labels?on_conflict=username_key', {
   method:'POST',
   headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-  body: JSON.stringify([{username_key: usernameKey, label, hidden, group_key: groupKey || null, group_primary: !!groupPrimary}])
+  body: JSON.stringify([{username_key: usernameKey, label, hidden, group_key: groupKey || null, group_primary: !!groupPrimary, favorite: !!favorite}])
 });
 const loadIpHidden = () => sbFetch('peer_ip_hidden?select=ip,hidden');
 const saveIpHiddenRemote = (ip, hidden) => sbFetch('peer_ip_hidden?on_conflict=ip', {
@@ -2055,6 +2074,76 @@ async function promptToggleIpHidden(ip){
   });
 }
 
+function isPersonHidden(username){
+  return (labels.get((username||'').toLowerCase()) || {}).hidden || false;
+}
+
+async function promptTogglePersonHidden(username){
+  if(!isAdmin()) return;
+  const key = username.toLowerCase();
+  const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
+  const goingToHide = !current.hidden;
+  await confirmModal({
+    title: goingToHide ? `Hide ${username}? (all their IPs, including future ones)` : `Unhide ${username}?`,
+    submitLabel: goingToHide ? 'Hide' : 'Unhide',
+    danger: goingToHide,
+    onConfirm: async () => {
+      labels.set(key, {label:current.label, hidden:goingToHide, groupKey:current.groupKey, groupPrimary:current.groupPrimary, favorite:current.favorite});
+      await saveLabelRemote(key, current.label, goingToHide, current.groupKey, current.groupPrimary, current.favorite);
+      render();
+      showToast(`${goingToHide?'hid':'unhid'} ${username}`);
+    }
+  });
+}
+
+function isFavorite(username){
+  return (labels.get((username||'').toLowerCase()) || {}).favorite || false;
+}
+
+function isGroupFavorite(members){
+  return members.some(m => isFavorite(m.username));
+}
+
+async function toggleGroupFavorite(groupKey){
+  if(!isAdmin()) return;
+  const memberKeys = membersOfGroupKey(groupKey);
+  const byUsernameLower = new Map(users.map(x=>[x.username.toLowerCase(), x]));
+  const members = memberKeys.map(k=>byUsernameLower.get(k)).filter(Boolean);
+  if(!members.length) return;
+  const face = faceOfGroup(members);
+  const currentlyFav = isGroupFavorite(members);
+  if(currentlyFav){
+    // unfavorite every member so the group stops showing as pinned
+    await Promise.all(members.map(m => {
+      const key = m.username.toLowerCase();
+      const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
+      if(!current.favorite) return Promise.resolve();
+      labels.set(key, {label:current.label, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:current.groupPrimary, favorite:false});
+      return saveLabelRemote(key, current.label, current.hidden, current.groupKey, current.groupPrimary, false);
+    }));
+    render();
+    showToast(`unpinned ${face.username}'s group`);
+  } else {
+    await toggleFavorite(face.username);
+  }
+}
+
+async function toggleFavorite(username){
+  if(!isAdmin()) return;
+  const key = username.toLowerCase();
+  const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
+  const goingToFav = !current.favorite;
+  labels.set(key, {label:current.label, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:current.groupPrimary, favorite:goingToFav});
+  try{
+    await saveLabelRemote(key, current.label, current.hidden, current.groupKey, current.groupPrimary, goingToFav);
+    render();
+    showToast(goingToFav ? `pinned ${username}` : `unpinned ${username}`);
+  }catch(e){
+    console.error(e);
+    showToast('pin save failed — check connection', true);
+  }
+}
+
 async function promptAssignUsername({ids, currentUsername='', title, submitLabel='Save'}){
   if(!isAdmin() || !ids || !ids.length) return;
   await openModal({
@@ -2116,7 +2205,7 @@ async function refreshFromCloud(){
   try{
     const [data, labelData, ipHiddenData] = await Promise.all([loadAllRows(), loadLabels(), loadIpHidden()]);
     rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id, addedAt:r.created_at||''}));
-    labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden, groupKey:l.group_key||'', groupPrimary:!!l.group_primary}]));
+    labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden, groupKey:l.group_key||'', groupPrimary:!!l.group_primary, favorite:!!l.favorite}]));
     ipHidden = new Map((ipHiddenData||[]).map(r => [r.ip, !!r.hidden]));
     buildGroups();
     toolbar.style.display = 'flex';
@@ -2617,9 +2706,9 @@ async function bulkLinkSelected(){
       const gk = existingGk || generateGroupKey();
       await Promise.all(selUsers.map(u => {
         const key = u.username.toLowerCase();
-        const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false};
-        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:gk, groupPrimary:current.groupPrimary});
-        return saveLabelRemote(key, current.label, current.hidden, gk, current.groupPrimary);
+        const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
+        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:gk, groupPrimary:current.groupPrimary, favorite:current.favorite});
+        return saveLabelRemote(key, current.label, current.hidden, gk, current.groupPrimary, current.favorite);
       }));
       selected.clear();
       render();
@@ -2642,9 +2731,9 @@ async function bulkUnlinkSelected(){
     onConfirm: async () => {
       await Promise.all(selUsers.map(u => {
         const key = u.username.toLowerCase();
-        const current = labels.get(key) || {label:'', hidden:false, groupKey:''};
-        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:'', groupPrimary:false});
-        return saveLabelRemote(key, current.label, current.hidden, '', false);
+        const current = labels.get(key) || {label:'', hidden:false, groupKey:'', favorite:false};
+        labels.set(key, {label:current.label, hidden:current.hidden, groupKey:'', groupPrimary:false, favorite:current.favorite});
+        return saveLabelRemote(key, current.label, current.hidden, '', false, current.favorite);
       }));
       selected.clear();
       render();
@@ -2679,9 +2768,9 @@ async function promptAddPsnIdLink(username){
         const gk = groupKeyOf(username) || groupKeyOf(other) || generateGroupKey();
         await Promise.all([username, target.username].map(uname => {
           const key = uname.toLowerCase();
-          const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false};
-          labels.set(key, {label:current.label, hidden:current.hidden, groupKey:gk, groupPrimary:current.groupPrimary});
-          return saveLabelRemote(key, current.label, current.hidden, gk, current.groupPrimary);
+          const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
+          labels.set(key, {label:current.label, hidden:current.hidden, groupKey:gk, groupPrimary:current.groupPrimary, favorite:current.favorite});
+          return saveLabelRemote(key, current.label, current.hidden, gk, current.groupPrimary, current.favorite);
         }));
         render();
         showToast(`linked ${username} and ${target.username}`);
@@ -2696,15 +2785,15 @@ async function promptAddPsnIdLink(username){
 async function unlinkOne(username){
   if(!isAdmin()) return;
   const key = username.toLowerCase();
-  const current = labels.get(key) || {label:'', hidden:false, groupKey:''};
+  const current = labels.get(key) || {label:'', hidden:false, groupKey:'', favorite:false};
   if(!current.groupKey) return;
   await confirmModal({
     title: `Unlink ${username} from this group?`,
     submitLabel: 'Unlink',
     danger: false,
     onConfirm: async () => {
-      labels.set(key, {label:current.label, hidden:current.hidden, groupKey:'', groupPrimary:false});
-      await saveLabelRemote(key, current.label, current.hidden, '', false);
+      labels.set(key, {label:current.label, hidden:current.hidden, groupKey:'', groupPrimary:false, favorite:current.favorite});
+      await saveLabelRemote(key, current.label, current.hidden, '', false, current.favorite);
       render();
       showToast(`unlinked ${username}`);
     }
@@ -2715,10 +2804,10 @@ async function setGroupPrimary(groupKey, username){
   if(!isAdmin()) return;
   const memberKeys = membersOfGroupKey(groupKey);
   await Promise.all(memberKeys.map(k => {
-    const current = labels.get(k) || {label:'', hidden:false, groupKey, groupPrimary:false};
+    const current = labels.get(k) || {label:'', hidden:false, groupKey, groupPrimary:false, favorite:false};
     const isThisOne = (k === username.toLowerCase());
-    labels.set(k, {label:current.label, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:isThisOne});
-    return saveLabelRemote(k, current.label, current.hidden, current.groupKey, isThisOne);
+    labels.set(k, {label:current.label, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:isThisOne, favorite:current.favorite});
+    return saveLabelRemote(k, current.label, current.hidden, current.groupKey, isThisOne, current.favorite);
   }));
   render();
   showToast(`${username} is now shown on the main row`);
@@ -2741,7 +2830,7 @@ function groupLatestRecord(members){
   members.forEach(m => {
     m.history.forEach(h => {
       if(!best || new Date(h.addedAt||0) > new Date(best.addedAt||0)){
-        best = {ip:h.ip, location:h.location, addedAt:h.addedAt, firstAddedAt:h.firstAddedAt, ids:h.ids};
+        best = {ip:h.ip, location:h.location, addedAt:h.addedAt, firstAddedAt:h.firstAddedAt, ids:h.ids, username:m.username};
       }
     });
   });
@@ -2770,6 +2859,7 @@ function openGroupModal(groupKey){
     const unlinkBtn = admin
       ? `<button class="icon-btn unlink-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="unlink from this group">Unlink</button>`
       : '';
+    const hideBtn = personHideBtn(u.username);
     const faceBtn = admin
       ? (isFace
           ? `<span class="chip-btn chip-accent ip-tag" title="shown on the main row">★ Face</span>`
@@ -2784,7 +2874,7 @@ function openGroupModal(groupKey){
         </div>
         <div class="group-psn-actions-line">
           ${faceBtn}
-          ${editBtn}${addIpBtn}${unlinkBtn}
+          ${editBtn}${addIpBtn}${hideBtn}${unlinkBtn}
         </div>
       </div>`;
   };
@@ -2798,12 +2888,12 @@ function openGroupModal(groupKey){
   const ipRow = (h, tag) => `
     <div class="group-ip-row">
       <div class="group-ip-main">
-        <span class="ip">${h.ip ? escapeHtml(ipHidden.get(h.ip) ? maskIp(h.ip) : h.ip) : '—'}</span>
+        <span class="ip">${h.ip ? escapeHtml(isPersonHidden(h.username) ? maskIp(h.ip) : h.ip) : '—'}</span>
         ${h.ip?`<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(h.ip)}" title="copy IP">⧉</button>`:''}
         ${tag?`<span class="hist-tag">${tag}</span>`:''}
       </div>
       <div class="group-ip-sub">${locationCell(h.location)} · ${formatLastSeen(h.addedAt)} · <span class="group-ip-owner">${escapeHtml(h.username)}</span></div>
-      ${(admin && h.ip)?`<div class="group-ip-actions">${ipHideBtn(h.ip, ipHidden.get(h.ip)||false)}${ipDelBtn(h.ip, h.ids)}</div>`:''}
+      ${(admin && h.ip)?`<div class="group-ip-actions">${ipDelBtn(h.ip, h.ids)}</div>`:''}
     </div>`;
 
   const groupHideBtn = admin ? `<button class="btn warn" id="grpModalHideBtn">Hide Group</button>` : '';
@@ -2884,6 +2974,13 @@ function openGroupModal(groupKey){
       openGroupModal(groupKey);
     });
   });
+  overlay.querySelectorAll('.person-hide-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      close();
+      await promptTogglePersonHidden(btn.dataset.uname);
+      openGroupModal(groupKey);
+    });
+  });
   overlay.querySelectorAll('.eye-btn').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       close();
@@ -2951,17 +3048,22 @@ async function bulkSetHidden(hideFlag){
   if(!total) return;
   const verb = hideFlag ? 'Hide' : 'Unhide';
   await confirmModal({
-    title: `${verb} ${total} selected row${total>1?'s':''}?${hideFlag?' (all IPs on each row)':''}`,
+    title: `${verb} ${total} selected row${total>1?'s':''}?${hideFlag?' (players: all IPs incl. future ones; unlabeled: this IP)':''}`,
     submitLabel: verb,
     danger: hideFlag,
     onConfirm: async () => {
-      const userIps = selUsers.flatMap(u => u.history.map(h => h.ip));
-      const unlabeledIps = selUnlabeled.map(u => u.ip);
-      const allIps = [...new Set([...userIps, ...unlabeledIps])];
-      await Promise.all(allIps.map(ip=>{
-        ipHidden.set(ip, hideFlag);
-        return saveIpHiddenRemote(ip, hideFlag);
-      }));
+      await Promise.all([
+        ...selUsers.map(u => {
+          const key = u.username.toLowerCase();
+          const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
+          labels.set(key, {label:current.label, hidden:hideFlag, groupKey:current.groupKey, groupPrimary:current.groupPrimary, favorite:current.favorite});
+          return saveLabelRemote(key, current.label, hideFlag, current.groupKey, current.groupPrimary, current.favorite);
+        }),
+        ...selUnlabeled.map(u => {
+          ipHidden.set(u.ip, hideFlag);
+          return saveIpHiddenRemote(u.ip, hideFlag);
+        })
+      ]);
       selected.clear();
       render();
       showToast(`${hideFlag?'hid':'unhid'} ${total} row${total>1?'s':''}`);
@@ -3085,10 +3187,10 @@ function locationCell(location){
 }
 
 async function saveLabel(key, value){
-  const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false};
-  labels.set(key, {label:value, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:current.groupPrimary});
+  const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
+  labels.set(key, {label:value, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:current.groupPrimary, favorite:current.favorite});
   try{
-    await saveLabelRemote(key, value, current.hidden, current.groupKey, current.groupPrimary);
+    await saveLabelRemote(key, value, current.hidden, current.groupKey, current.groupPrimary, current.favorite);
   }catch(e){
     console.error(e);
     showToast('label save failed — check connection', true);
@@ -3097,6 +3199,10 @@ async function saveLabel(key, value){
 
 function ipHideBtn(ip, hidden){
   return (isAdmin() && ip) ? `<span class="chip-tip warn" data-tooltip="${hidden?'UNHIDE THIS IP':'HIDE THIS IP'}"><button class="icon-btn eye-btn chip-btn chip-warn" data-ip="${escapeHtml(ip)}" aria-label="${hidden?'unhide':'hide'} this IP">${hidden?'Show':'Hide'}</button></span>` : '';
+}
+function personHideBtn(username){
+  const hidden = isPersonHidden(username);
+  return isAdmin() ? `<span class="chip-tip warn" data-tooltip="${hidden?'UNHIDE THIS PERSON':'HIDE THIS PERSON'}"><button class="icon-btn person-hide-btn chip-btn chip-warn" data-uname="${escapeHtml(username)}" aria-label="${hidden?'unhide':'hide'} this person">${hidden?'Show':'Hide'}</button></span>` : '';
 }
 function ipDelBtn(ip, ids){
   return (isAdmin() && ids && ids.length) ? `<span class="chip-tip danger" data-tooltip="DELETE THIS IP"><button class="icon-btn del-btn chip-btn chip-danger" data-ids="${(ids||[]).join(',')}" data-ip="${escapeHtml(ip)}" aria-label="delete this IP">delete</button></span>` : '';
@@ -3117,9 +3223,103 @@ function ipCell(ip, ids, opts={}){
   return `<span class="ip-cell"><span class="ip-line"><span class="ip">${displaySafe||'—'}</span>${copyBtn}${sharedBadge}</span>${actions}</span>`;
 }
 
+function renderFavoritesTable(){
+  const admin = isAdmin();
+  const favUsers = users.filter(u => isFavorite(u.username));
+  if(!favUsers.length){ favoritesHolder.innerHTML = ''; return; }
+
+  const byUsernameLower = new Map(users.map(x=>[x.username.toLowerCase(), x]));
+  const seenGroups = new Set();
+  const items = [];
+  favUsers.forEach(u => {
+    const gk = groupKeyOf(u.username);
+    if(gk){
+      if(seenGroups.has(gk)) return;
+      const memberKeys = membersOfGroupKey(gk);
+      const members = memberKeys.map(k=>byUsernameLower.get(k)).filter(Boolean);
+      if(members.length < 2){ items.push({type:'single', user:u}); return; }
+      seenGroups.add(gk);
+      const face = faceOfGroup(members);
+      const latest = groupLatestRecord(members);
+      items.push({type:'group', groupKey:gk, face, latest, count:members.length});
+    } else {
+      items.push({type:'single', user:u});
+    }
+  });
+
+  items.sort((a,b) => {
+    const at = a.type==='group' ? (a.latest?a.latest.addedAt:'') : a.user.latestAddedAt;
+    const bt = b.type==='group' ? (b.latest?b.latest.addedAt:'') : b.user.latestAddedAt;
+    return new Date(bt||0) - new Date(at||0);
+  });
+
+  const rows = items.map(item => {
+    if(item.type==='group'){
+      const {groupKey, face, latest, count} = item;
+      const starBtn = admin
+        ? `<button class="icon-btn star-btn chip-btn chip-icon chip-accent" data-group-key="${escapeHtml(groupKey)}" title="unpin from favorites">★</button>`
+        : `<span class="chip-btn chip-icon chip-accent">★</span>`;
+      const ip = latest ? latest.ip : '';
+      const hiddenFlag = isPersonHidden(latest ? latest.username : face.username);
+      return `
+        <tr class="fav-row" data-group-key="${escapeHtml(groupKey)}">
+          <td>${starBtn} ${escapeHtml(face.username)}<span class="badge chip-btn chip-accent">+${count-1}</span></td>
+          <td>${ipCell(ip, [], {hidden:hiddenFlag, showActions:false})}</td>
+          <td class="last-seen">${formatLastSeen(latest?latest.addedAt:'')}</td>
+        </tr>`;
+    }
+    const u = item.user;
+    const personHidden = isPersonHidden(u.username);
+    const starBtn = admin
+      ? `<button class="icon-btn star-btn chip-btn chip-icon chip-accent" data-uname="${escapeHtml(u.username)}" title="unpin from favorites">★</button>`
+      : `<span class="chip-btn chip-icon chip-accent">★</span>`;
+    return `
+      <tr class="fav-row" data-key="${escapeHtml(u.username.toLowerCase())}">
+        <td>${starBtn} ${escapeHtml(u.username)}</td>
+        <td>${ipCell(u.latestIp, [], {hidden:personHidden, showActions:false})}</td>
+        <td class="last-seen">${formatLastSeen(u.latestAddedAt)}</td>
+      </tr>`;
+  }).join('');
+
+  favoritesHolder.innerHTML = `
+    <section class="block fav-block">
+      <p class="block-title"><span class="fav-star">★</span> Favorites <span class="n">(${items.length})</span></p>
+      <table class="fav-table">
+        <thead><tr><th>PSN ID</th><th>Latest IP</th><th>Last Seen</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>`;
+  favoritesHolder.querySelectorAll('.star-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(btn.dataset.groupKey) toggleGroupFavorite(btn.dataset.groupKey);
+      else toggleFavorite(btn.dataset.uname);
+    });
+  });
+  favoritesHolder.querySelectorAll('.fav-row').forEach(tr=>{
+    tr.addEventListener('click', (e)=>{
+      if(e.target.closest('.star-btn')) return;
+      if(tr.dataset.groupKey){
+        openGroupModal(tr.dataset.groupKey);
+        return;
+      }
+      const key = tr.dataset.key;
+      expanded.add(key);
+      search.value = '';
+      render();
+      setTimeout(()=>{
+        const target = document.querySelector(`.main-row[data-key="${CSS.escape(key)}"]`);
+        if(target) target.scrollIntoView({behavior:'smooth', block:'center'});
+      }, 50);
+    });
+  });
+}
+
 function render(){
   const q = search.value.trim().toLowerCase();
   const admin = isAdmin();
+
+  renderFavoritesTable();
 
   let list = users.filter(u => matchesQuery(u, q));
   list.sort((a,b)=>{
@@ -3167,18 +3367,22 @@ function render(){
         ? `<button class="icon-btn add-psn-link-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="link another PSN ID as the same person">+ Add PSN ID</button>`
         : '';
       const nameCopyBtn = u.username ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID" aria-label="copy PSN ID">⧉</button>` : '';
+      const fav = isFavorite(u.username);
+      const starBtn = admin
+        ? `<button class="icon-btn star-btn chip-btn chip-icon ${fav?'chip-accent':''}" data-uname="${escapeHtml(u.username)}" title="${fav?'unpin':'pin to favorites'}">${fav?'★':'☆'}</button>`
+        : (fav ? `<span class="chip-btn chip-icon chip-accent">★</span>` : '');
       const uSelKey = userSelKey(u);
       const rowChecked = selected.has(uSelKey) ? 'checked' : '';
-      const latestHidden = ipHidden.get(u.latestIp)||false;
-      const rowHideBtn = ipHideBtn(u.latestIp, latestHidden);
+      const personHidden = isPersonHidden(u.username);
+      const rowHideBtn = personHideBtn(u.username);
       const rowDelBtn = ipDelBtn(u.latestIp, u.history[0].ids);
       const actionGroupContent = `${nameEdit}${addIpBtn}${addPsnLinkBtn}${rowHideBtn}${rowDelBtn}`;
       const actionGroup = (isExpanded && actionGroupContent) ? `<span class="uname-actions">${actionGroupContent}</span>` : '';
       let out = `
         <tr class="main-row has-psn ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
-          <td><span class="caret">${(multi||admin)?'▸':''}</span>${displayName}${nameCopyBtn}${actionGroup}</td>
-          <td>${ipCell(u.latestIp, u.history[0].ids, {hidden: latestHidden, showActions:false, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
+          <td><span class="caret">${(multi||admin)?'▸':''}</span>${displayName}${starBtn}${nameCopyBtn}${actionGroup}</td>
+          <td>${ipCell(u.latestIp, u.history[0].ids, {hidden: personHidden, showActions:false, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
           <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
           </td>
@@ -3191,7 +3395,7 @@ function render(){
             <tr class="hist-row ${parity} ${i===0?'newest':''}" style="animation-delay:${Math.min(i*35,250)}ms">
               <td></td>
               <td></td>
-              <td>${ipCell(h.ip, h.ids, {hidden: ipHidden.get(h.ip)||false, showEye:true, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
+              <td>${ipCell(h.ip, h.ids, {hidden: personHidden, showEye:false, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
               <td>${locationCell(h.location)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
               <td class="last-seen">${formatLastSeen(h.firstAddedAt)}</td>
               <td class="last-seen">${formatLastSeen(h.addedAt)}</td>
@@ -3208,11 +3412,15 @@ function render(){
       const firstSeen = latest ? latest.firstAddedAt : '';
       const gSelKey = 'g::'+groupKey;
       const rowChecked = selected.has(gSelKey) ? 'checked' : '';
+      const fav = isGroupFavorite(members);
+      const starBtn = admin
+        ? `<button class="icon-btn star-btn chip-btn chip-icon ${fav?'chip-accent':''}" data-group-key="${escapeHtml(groupKey)}" title="${fav?'unpin':'pin to favorites'}">${fav?'★':'☆'}</button>`
+        : (fav ? `<span class="chip-btn chip-icon chip-accent">★</span>` : '');
       return `
         <tr class="main-row has-psn group-header ${parity}" data-group-key="${escapeHtml(groupKey)}">
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(gSelKey)}" ${rowChecked}></td>
-          <td><span class="caret">▸</span>${escapeHtml(face.username)}<span class="badge chip-btn chip-accent group-badge" data-group-key="${escapeHtml(groupKey)}">+${members.length-1} account${members.length-1>1?'s':''}</span></td>
-          <td>${ipCell(latest.ip, [], {hidden: ipHidden.get(latest.ip)||false, showActions:false, sharedWith:sharedIpUsers(latest.ip, face.username)})}</td>
+          <td><span class="caret">▸</span>${escapeHtml(face.username)}${starBtn}<span class="badge chip-btn chip-accent group-badge" data-group-key="${escapeHtml(groupKey)}">+${members.length-1} account${members.length-1>1?'s':''}</span></td>
+          <td>${ipCell(latest.ip, [], {hidden: isPersonHidden(latest.username), showActions:false, sharedWith:sharedIpUsers(latest.ip, face.username)})}</td>
           <td>${locationCell(latest.location)}</td>
           <td class="last-seen">${formatLastSeen(firstSeen)}</td>
           <td class="last-seen">${formatLastSeen(latest.addedAt)}</td>
@@ -3489,6 +3697,22 @@ function render(){
       btn.addEventListener('click', (e)=>{
         e.stopPropagation();
         promptAddPsnIdLink(btn.dataset.uname);
+      });
+    });
+    document.querySelectorAll('.person-hide-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        promptTogglePersonHidden(btn.dataset.uname);
+      });
+    });
+    document.querySelectorAll('.star-btn').forEach(btn=>{
+      btn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        if(btn.dataset.groupKey){
+          toggleGroupFavorite(btn.dataset.groupKey);
+        } else {
+          toggleFavorite(btn.dataset.uname);
+        }
       });
     });
   }
