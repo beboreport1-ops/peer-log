@@ -492,6 +492,7 @@
   .bulk-bar .btn:focus-visible{z-index:1;}
 
   .checkbox-col{width:32px;}
+  .star-btn-col{display:none;}
   .row-check{
     width:14px;height:14px;
     cursor:pointer;
@@ -1418,13 +1419,20 @@
   }
 
   @media (max-width:640px){
-    body{padding:16px 12px 100px;}
-    h1{font-size:13px;}
-    .count b{font-size:17px;}
+    body{padding:16px 6px 100px;}
+    header{padding:16px 4px 18px;margin-bottom:24px;}
+    h1{font-size:16px;}
+    .sub{font-size:11.5px;}
+    .count{padding:10px 16px;}
+    .count b{font-size:22px;}
+    .count::before{font-size:9px;}
+    #dropzone, #exportBtn{display:none !important;}
+    .toolbar{gap:10px;}
+    .search{padding:13px 16px 13px 30px;font-size:13.5px;}
     .label-input{min-width:50px;font-size:12px;}
-    .btn{padding:10px 14px;font-size:10.5px;}
-    .chip-btn{font-size:10px;padding:2px 8px 1px;}
-    .chip-btn.chip-icon{padding:0;width:26px;font-size:11px;letter-spacing:0;line-height:26px;}
+    .btn{padding:12px 20px;font-size:11.5px;}
+    .chip-btn{font-size:11px;padding:3px 9px 2px;}
+    .chip-btn.chip-icon{padding:0;width:28px;font-size:12px;letter-spacing:0;line-height:28px;}
     .uname-actions,.ip-actions{
       display:flex;
       flex-wrap:wrap;
@@ -1452,10 +1460,36 @@
        instead of stacked cards. Only the essentials show; everything else
        (checkboxes, bulk actions, extra columns, inline edit/hide/delete)
        is desktop-only — tap a row for the rest via a popup. ---- */
-    .main-table, .unlabeled-table{font-size:12px;}
-    .main-table thead th, .unlabeled-table thead th{padding:10px 10px;font-size:10px;}
-    .main-table tbody td, .unlabeled-table tbody td{padding:11px 10px;font-size:12.5px;}
-    .main-table .checkbox-col, .unlabeled-table .checkbox-col{display:none;}
+    .main-table, .unlabeled-table{font-size:12.5px;table-layout:fixed;width:100%;}
+    .main-table thead th, .unlabeled-table thead th{padding:10px 6px;font-size:10.5px;}
+    .main-table tbody td, .unlabeled-table tbody td{padding:12px 6px;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;}
+    .fav-table{table-layout:fixed;width:100%;font-size:12.5px;}
+    .fav-table thead th{padding:10px 6px;font-size:10.5px;}
+    .fav-table tbody td{padding:11px 6px;overflow:hidden;text-overflow:ellipsis;}
+    .fav-table .checkbox-col{width:38px;padding:6px 2px;overflow:visible;}
+    .fav-table thead th:nth-child(2), .fav-table tbody td:nth-child(2){width:32%;white-space:nowrap;}
+    .fav-table thead th:nth-child(3), .fav-table tbody td:nth-child(3){width:32%;padding-right:12px;}
+    .fav-table thead th:nth-child(4), .fav-table tbody td:nth-child(4){width:30%;padding-left:12px;}
+    /* explicit widths for the columns still visible on mobile so nothing
+       has to fight for space and force a horizontal zoom */
+    .main-table thead th:nth-child(2), .main-table tbody td:nth-child(2){width:32%;white-space:nowrap;}
+    .main-table thead th:nth-child(3), .main-table tbody td:nth-child(3){width:32%;padding-right:12px;}
+    .main-table thead th:nth-child(6), .main-table tbody td:nth-child(6){width:26%;padding-left:12px;}
+    .unlabeled-table thead th:nth-child(3), .unlabeled-table tbody td:nth-child(3){width:34%;}
+    .unlabeled-table thead th:nth-child(4), .unlabeled-table tbody td:nth-child(4){width:36%;white-space:nowrap;}
+    .unlabeled-table thead th:nth-child(7), .unlabeled-table tbody td:nth-child(7){width:30%;padding-left:12px;}
+    /* PSN ID cell gets crowded with caret + star + copy + long names — drop
+       the caret and inline copy buttons on mobile, tapping the row (which
+       always opens the detail popup now) covers both anyway. Also drop the
+       IP's own copy button so the full IP digits never get truncated. */
+    .main-table .main-row .caret, .main-table .main-row .copy-btn, .main-table .badge, .fav-table .badge{display:none;}
+    .main-table .ip-cell .copy-btn, .fav-table .ip-cell .copy-btn, .unlabeled-table .ip-cell .copy-btn{display:none;}
+    .main-table .last-seen, .fav-table tbody td:last-child, .unlabeled-table .last-seen{white-space:nowrap;}
+    .unlabeled-table .checkbox-col{display:none;}
+    .main-table .checkbox-col{width:38px;padding:6px 2px;overflow:visible;}
+    .main-table .checkbox-col input[type=checkbox]{display:none;}
+    .main-table .star-btn-col{display:inline-flex !important;}
+    .main-table .star-btn-inline{display:none !important;}
     /* main table columns: 1 checkbox | 2 PSN ID | 3 IP | 4 Location | 5 First Seen | 6 Last Seen
        keep PSN ID / Latest IP / Last Seen, hide the rest */
     .main-table thead th:nth-child(4), .main-table tbody td:nth-child(4),
@@ -1500,12 +1534,11 @@
     <p>expects columns: PSN ID (username/player), IP, location — synced to the cloud; if you're offline it queues and syncs automatically once you're back online</p>
   </label>
 
-  <button class="btn" id="addRowBtn" style="display:none;margin-bottom:14px;">+ Add row manually</button>
-
   <div class="toolbar" id="toolbar" style="display:none;">
     <input class="search" id="search" placeholder="filter by PSN ID...">
     <button class="btn primary" id="exportBtn">Export filtered CSV</button>
-    <button class="btn" id="changePassBtn" style="display:none;">Change Password</button>
+    <button class="btn" id="addRowBtn" style="display:none;">+ Add row manually</button>
+    <button class="btn" id="manageViewersBtn" style="display:none;">Manage Viewer IDs</button>
   </div>
 
   <div class="bulk-bar" id="bulkBar" style="display:none;">
@@ -1548,6 +1581,8 @@ let selected = new Set();  // composite keys of selected rows (users + unlabeled
 let passwordHash = null;
 let keyHash = null;
 let role = null;           // 'view' | 'admin'
+let viewerId = null;       // which viewer ID is logged in (or '__admin__' for admin's own favorites)
+let myFavorites = new Set(); // username_keys favorited by the current logged-in viewer/admin
 
 const appEl = document.getElementById('app');
 const gateScreenEl = document.getElementById('gateScreen');
@@ -1561,7 +1596,7 @@ const favoritesHolder = document.getElementById('favoritesHolder');
 const unlabeledHolder = document.getElementById('unlabeledHolder');
 const countEl = document.getElementById('count');
 const exportBtn = document.getElementById('exportBtn');
-const changePassBtn = document.getElementById('changePassBtn');
+const manageViewersBtn = document.getElementById('manageViewersBtn');
 const bulkBar = document.getElementById('bulkBar');
 const bulkCount = document.getElementById('bulkCount');
 const bulkExportBtn = document.getElementById('bulkExportBtn');
@@ -1844,8 +1879,10 @@ async function init(){
   }
 
   const savedRole = sessionStorage.getItem('peerlog_role');
+  const savedViewerId = sessionStorage.getItem('peerlog_viewer_id');
   if(savedRole === 'view' || savedRole === 'admin'){
     role = savedRole;
+    viewerId = savedViewerId || (savedRole === 'admin' ? '__admin__' : null);
     showApp();
   } else {
     showGate();
@@ -1862,12 +1899,12 @@ function showGate(){
       <div class="gate-screen">
         <div class="gate-box">
           <h1 class="gate-title">PEER<span>_</span>LOG</h1>
-          <p class="gate-sub">${tab==='view' ? 'Enter password to view the log' : 'Enter key for admin access'}</p>
+          <p class="gate-sub">${tab==='view' ? 'Enter your viewer ID' : 'Enter key for admin access'}</p>
           <div class="gate-tabs">
             <button class="gate-tab ${tab==='view'?'active':''}" data-tab="view">Viewer</button>
             <button class="gate-tab ${tab==='admin'?'active':''}" data-tab="admin">Admin</button>
           </div>
-          <input class="gate-input" id="gateInput" type="password" placeholder="${tab==='view'?'password':'key'}" autocomplete="off">
+          <input class="gate-input" id="gateInput" type="password" placeholder="${tab==='view'?'your ID':'key'}" autocomplete="off">
           <p class="gate-error" id="gateError"></p>
           <button class="btn primary gate-submit" id="gateSubmit">${tab==='view'?'Unlock':'Log in as admin'}</button>
         </div>
@@ -1887,15 +1924,42 @@ function showGate(){
 
     async function tryLogin(){
       submit.disabled = true;
-      const hash = await sha256Hex(input.value);
-      const expected = tab === 'view' ? passwordHash : keyHash;
-      if(hash === expected){
-        role = tab;
-        sessionStorage.setItem('peerlog_role', role);
-        gateScreenEl.innerHTML = '';
-        showApp();
-      } else {
-        err.textContent = tab==='view' ? 'Incorrect password' : 'Incorrect key';
+      if(tab === 'admin'){
+        const hash = await sha256Hex(input.value);
+        if(hash === keyHash){
+          role = 'admin';
+          viewerId = '__admin__';
+          sessionStorage.setItem('peerlog_role', role);
+          sessionStorage.setItem('peerlog_viewer_id', viewerId);
+          gateScreenEl.innerHTML = '';
+          showApp();
+        } else {
+          err.textContent = 'Incorrect key';
+          submit.disabled = false;
+        }
+        return;
+      }
+      const entered = input.value.trim();
+      if(!entered){
+        err.textContent = 'Enter your ID';
+        submit.disabled = false;
+        return;
+      }
+      try{
+        const rows = await sbFetch(`peer_viewers?select=viewer_id&viewer_id=eq.${encodeURIComponent(entered)}`);
+        if(rows && rows.length){
+          role = 'view';
+          viewerId = entered;
+          sessionStorage.setItem('peerlog_role', role);
+          sessionStorage.setItem('peerlog_viewer_id', viewerId);
+          gateScreenEl.innerHTML = '';
+          showApp();
+        } else {
+          err.textContent = 'Incorrect ID';
+          submit.disabled = false;
+        }
+      }catch(e){
+        err.textContent = 'Connection error — try again';
         submit.disabled = false;
       }
     }
@@ -1912,7 +1976,9 @@ async function showApp(){
   roleTag.className = 'role-tag' + (isAdmin() ? ' admin' : '');
   dropzone.style.display = isAdmin() ? 'block' : 'none';
   addRowBtn.style.display = isAdmin() ? 'inline-block' : 'none';
-  changePassBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+  manageViewersBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+
+  await loadMyFavoritesData();
 
   if(isAdmin() && getPendingRows().length){
     await flushPendingUploads();
@@ -1926,30 +1992,147 @@ async function showApp(){
   }
 }
 
+async function loadMyFavoritesData(){
+  try{
+    if(!viewerId){ myFavorites = new Set(); return; }
+    const rows = await sbFetch(`peer_favorites?select=username_key&viewer_id=eq.${encodeURIComponent(viewerId)}`);
+    myFavorites = new Set((rows||[]).map(r => r.username_key));
+  }catch(e){
+    console.error(e);
+    myFavorites = new Set();
+  }
+}
+
 logoutBtn.addEventListener('click', ()=>{
   sessionStorage.removeItem('peerlog_role');
+  sessionStorage.removeItem('peerlog_viewer_id');
   location.reload();
 });
 
-async function openChangePassword(){
+async function openManageViewerIds(){
+  if(!isAdmin()) return;
+  let viewers = [];
+  try{
+    viewers = await sbFetch('peer_viewers?select=viewer_id&order=viewer_id.asc');
+  }catch(e){
+    showToast('failed to load viewer IDs — check connection', true);
+    return;
+  }
+  renderManageViewerIdsModal(viewers || []);
+}
+
+function renderManageViewerIdsModal(viewers){
+  const rows = viewers.map(v => `
+    <div class="group-psn-row">
+      <div class="group-psn-name-line">
+        <span class="group-member-name">${escapeHtml(v.viewer_id)}</span>
+      </div>
+      <div class="group-psn-actions-line">
+        <button class="icon-btn rename-viewer-btn chip-btn chip-ghost" data-id="${escapeHtml(v.viewer_id)}">Rename</button>
+        <button class="icon-btn delete-viewer-btn chip-btn chip-danger" data-id="${escapeHtml(v.viewer_id)}">Delete</button>
+      </div>
+    </div>`).join('');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box group-modal-box">
+      <h3>Viewer IDs (${viewers.length})</h3>
+      <div class="modal-fields group-modal-scroll">
+        ${rows || '<div class="group-ip-empty">No viewer IDs yet — add one below</div>'}
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="addViewerIdBtn">+ Add ID</button>
+        <button class="btn primary" id="manageViewersCloseBtn">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  function close(){ overlay.remove(); }
+  overlay.addEventListener('click', e => { if(e.target===overlay) close(); });
+  overlay.querySelector('#manageViewersCloseBtn').addEventListener('click', close);
+  overlay.querySelector('#addViewerIdBtn').addEventListener('click', async ()=>{
+    close();
+    await promptAddViewerId();
+    openManageViewerIds();
+  });
+  overlay.querySelectorAll('.rename-viewer-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      close();
+      await promptRenameViewerId(btn.dataset.id);
+      openManageViewerIds();
+    });
+  });
+  overlay.querySelectorAll('.delete-viewer-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      close();
+      await promptDeleteViewerId(btn.dataset.id);
+      openManageViewerIds();
+    });
+  });
+}
+
+async function promptAddViewerId(){
   await openModal({
-    title: 'Change viewer password',
-    fields: [
-      {id:'newpass', label:'New password', type:'password'},
-      {id:'confirm', label:'Confirm new password', type:'password'}
-    ],
-    submitLabel: 'Save',
+    title: 'Add viewer ID',
+    fields: [{id:'newid', label:'New viewer ID (this is also their password)'}],
+    submitLabel: 'Add',
     onSubmit: async (vals) => {
-      if(!vals.newpass) return {ok:false, message:'Enter a new password'};
-      if(vals.newpass !== vals.confirm) return {ok:false, message:"Passwords don't match"};
+      const id = (vals.newid||'').trim();
+      if(!id) return {ok:false, message:'Enter an ID'};
       try{
-        const newHash = await sha256Hex(vals.newpass);
-        await patchAuth({password_hash:newHash});
-        passwordHash = newHash;
-        showToast('password changed');
+        await sbFetch('peer_viewers', {method:'POST', headers:{'Prefer':'return=minimal'}, body: JSON.stringify([{viewer_id:id}])});
+        showToast(`added viewer ID "${id}"`);
         return {ok:true};
       }catch(e){
-        return {ok:false, message:'Update failed — check connection'};
+        return {ok:false, message:'Failed to add — it may already exist'};
+      }
+    }
+  });
+}
+
+async function promptDeleteViewerId(id){
+  await confirmModal({
+    title: `Delete viewer ID "${id}"? Their favorites will be removed too.`,
+    submitLabel: 'Delete',
+    danger: true,
+    onConfirm: async () => {
+      try{
+        await sbFetch(`peer_favorites?viewer_id=eq.${encodeURIComponent(id)}`, {method:'DELETE'});
+        await sbFetch(`peer_viewers?viewer_id=eq.${encodeURIComponent(id)}`, {method:'DELETE'});
+        showToast(`deleted viewer ID "${id}"`);
+      }catch(e){
+        showToast('delete failed — check connection', true);
+      }
+    }
+  });
+}
+
+async function promptRenameViewerId(oldId){
+  await openModal({
+    title: `Rename viewer ID "${oldId}"`,
+    fields: [{id:'newid', label:'New ID', value:oldId}],
+    submitLabel: 'Save',
+    onSubmit: async (vals) => {
+      const newId = (vals.newid||'').trim();
+      if(!newId) return {ok:false, message:'Enter an ID'};
+      if(newId === oldId) return {ok:true};
+      try{
+        await sbFetch('peer_viewers', {method:'POST', headers:{'Prefer':'return=minimal'}, body: JSON.stringify([{viewer_id:newId}])});
+        const favRows = await sbFetch(`peer_favorites?select=username_key&viewer_id=eq.${encodeURIComponent(oldId)}`);
+        if(favRows && favRows.length){
+          await sbFetch('peer_favorites', {
+            method:'POST',
+            headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+            body: JSON.stringify(favRows.map(r=>({viewer_id:newId, username_key:r.username_key})))
+          });
+        }
+        await sbFetch(`peer_favorites?viewer_id=eq.${encodeURIComponent(oldId)}`, {method:'DELETE'});
+        await sbFetch(`peer_viewers?viewer_id=eq.${encodeURIComponent(oldId)}`, {method:'DELETE'});
+        showToast(`renamed to "${newId}"`);
+        return {ok:true};
+      }catch(e){
+        return {ok:false, message:'Rename failed — new ID may already exist'};
       }
     }
   });
@@ -2009,7 +2192,7 @@ async function promptTogglePersonHidden(username){
 }
 
 function isFavorite(username){
-  return (labels.get((username||'').toLowerCase()) || {}).favorite || false;
+  return myFavorites.has((username||'').toLowerCase());
 }
 
 function isGroupFavorite(members){
@@ -2017,7 +2200,7 @@ function isGroupFavorite(members){
 }
 
 async function toggleGroupFavorite(groupKey){
-  if(!isAdmin()) return;
+  if(!viewerId) return;
   const memberKeys = membersOfGroupKey(groupKey);
   const byUsernameLower = new Map(users.map(x=>[x.username.toLowerCase(), x]));
   const members = memberKeys.map(k=>byUsernameLower.get(k)).filter(Boolean);
@@ -2026,32 +2209,42 @@ async function toggleGroupFavorite(groupKey){
   const currentlyFav = isGroupFavorite(members);
   if(currentlyFav){
     // unfavorite every member so the group stops showing as pinned
-    await Promise.all(members.map(m => {
-      const key = m.username.toLowerCase();
-      const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
-      if(!current.favorite) return Promise.resolve();
-      labels.set(key, {label:current.label, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:current.groupPrimary, favorite:false});
-      return saveLabelRemote(key, current.label, current.hidden, current.groupKey, current.groupPrimary, false);
-    }));
+    const toRemove = members.filter(m => isFavorite(m.username)).map(m => m.username.toLowerCase());
+    toRemove.forEach(k => myFavorites.delete(k));
     render();
-    showToast(`unpinned ${face.username}'s group`);
+    try{
+      await Promise.all(toRemove.map(k => sbFetch(`peer_favorites?viewer_id=eq.${encodeURIComponent(viewerId)}&username_key=eq.${encodeURIComponent(k)}`, {method:'DELETE'})));
+      showToast(`unpinned ${face.username}'s group`);
+    }catch(e){
+      console.error(e);
+      showToast('unpin failed — check connection', true);
+    }
   } else {
     await toggleFavorite(face.username);
   }
 }
 
 async function toggleFavorite(username){
-  if(!isAdmin()) return;
+  if(!viewerId) return;
   const key = username.toLowerCase();
-  const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
-  const goingToFav = !current.favorite;
-  labels.set(key, {label:current.label, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:current.groupPrimary, favorite:goingToFav});
+  const goingToFav = !myFavorites.has(key);
+  if(goingToFav) myFavorites.add(key); else myFavorites.delete(key);
+  render();
   try{
-    await saveLabelRemote(key, current.label, current.hidden, current.groupKey, current.groupPrimary, goingToFav);
-    render();
+    if(goingToFav){
+      await sbFetch('peer_favorites', {
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body: JSON.stringify([{viewer_id:viewerId, username_key:key}])
+      });
+    } else {
+      await sbFetch(`peer_favorites?viewer_id=eq.${encodeURIComponent(viewerId)}&username_key=eq.${encodeURIComponent(key)}`, {method:'DELETE'});
+    }
     showToast(goingToFav ? `pinned ${username}` : `unpinned ${username}`);
   }catch(e){
     console.error(e);
+    if(goingToFav) myFavorites.delete(key); else myFavorites.add(key);
+    render();
     showToast('pin save failed — check connection', true);
   }
 }
@@ -2826,7 +3019,7 @@ function openPlayerModal(username){
   const personHidden = isPersonHidden(u.username);
   const fav = isFavorite(u.username);
 
-  const starBtn = admin
+  const starBtn = viewerId
     ? `<button class="icon-btn star-btn chip-btn chip-icon ${fav?'chip-accent':''}" data-uname="${escapeHtml(u.username)}" title="${fav?'unpin':'pin to favorites'}">${fav?'★':'☆'}</button>`
     : (fav ? `<span class="chip-btn chip-icon chip-accent">★</span>` : '');
   const copyBtn = `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID">⧉</button>`;
@@ -3219,14 +3412,14 @@ function formatLastSeen(iso){
   const diffDays = Math.round((utcNow - utcThen) / dayMs);
   let text;
   if(diffDays <= 0) text = 'today';
-  else if(diffDays === 1) text = '1 day ago';
-  else if(diffDays < 30) text = `${diffDays} days ago`;
+  else if(diffDays === 1) text = '1 day';
+  else if(diffDays < 30) text = `${diffDays} days`;
   else if(diffDays < 365){
     const m = Math.floor(diffDays/30);
-    text = `${m} month${m>1?'s':''} ago`;
+    text = `${m} month${m>1?'s':''}`;
   } else {
     const y = Math.floor(diffDays/365);
-    text = `${y} year${y>1?'s':''} ago`;
+    text = `${y} year${y>1?'s':''}`;
   }
   const full = d.toLocaleString('en-US', {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'});
   return `<span title="${escapeHtml(full)}">${escapeHtml(text)}</span>`;
@@ -3347,7 +3540,7 @@ function renderFavoritesTable(){
   const rows = items.map(item => {
     if(item.type==='group'){
       const {groupKey, face, latest, count} = item;
-      const starBtn = admin
+      const starBtn = viewerId
         ? `<button class="icon-btn star-btn chip-btn chip-icon chip-accent" data-group-key="${escapeHtml(groupKey)}" title="unpin from favorites">★</button>`
         : `<span class="chip-btn chip-icon chip-accent">★</span>`;
       const ip = latest ? latest.ip : '';
@@ -3362,7 +3555,7 @@ function renderFavoritesTable(){
     }
     const u = item.user;
     const personHidden = isPersonHidden(u.username);
-    const starBtn = admin
+    const starBtn = viewerId
       ? `<button class="icon-btn star-btn chip-btn chip-icon chip-accent" data-uname="${escapeHtml(u.username)}" title="unpin from favorites">★</button>`
       : `<span class="chip-btn chip-icon chip-accent">★</span>`;
     return `
@@ -3378,7 +3571,7 @@ function renderFavoritesTable(){
     <section class="block fav-block">
       <p class="block-title"><span class="fav-star">★</span> Favorites <span class="n">(${items.length})</span></p>
       <table class="fav-table">
-        <thead><tr><th class="checkbox-col"></th><th>PSN ID</th><th>Latest IP</th><th>Last Seen</th></tr></thead>
+        <thead><tr><th class="checkbox-col"></th><th>PSN ID</th><th>Latest IP</th><th>Seen</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </section>`;
@@ -3461,9 +3654,12 @@ function render(){
         : '';
       const nameCopyBtn = u.username ? `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID" aria-label="copy PSN ID">⧉</button>` : '';
       const fav = isFavorite(u.username);
-      const starBtn = admin
-        ? `<button class="icon-btn star-btn chip-btn chip-icon ${fav?'chip-accent':''}" data-uname="${escapeHtml(u.username)}" title="${fav?'unpin':'pin to favorites'}">${fav?'★':'☆'}</button>`
-        : (fav ? `<span class="chip-btn chip-icon chip-accent">★</span>` : '');
+      const starBtnInline = viewerId
+        ? `<button class="icon-btn star-btn star-btn-inline chip-btn chip-icon ${fav?'chip-accent':''}" data-uname="${escapeHtml(u.username)}" title="${fav?'unpin':'pin to favorites'}">${fav?'★':'☆'}</button>`
+        : (fav ? `<span class="chip-btn chip-icon chip-accent star-btn-inline">★</span>` : '');
+      const starBtnCol = viewerId
+        ? `<button class="icon-btn star-btn star-btn-col chip-btn chip-icon ${fav?'chip-accent':''}" data-uname="${escapeHtml(u.username)}" title="${fav?'unpin':'pin to favorites'}">${fav?'★':'☆'}</button>`
+        : (fav ? `<span class="chip-btn chip-icon chip-accent star-btn-col">★</span>` : '');
       const uSelKey = userSelKey(u);
       const rowChecked = selected.has(uSelKey) ? 'checked' : '';
       const personHidden = isPersonHidden(u.username);
@@ -3473,8 +3669,8 @@ function render(){
       const actionGroup = (isExpanded && actionGroupContent) ? `<span class="uname-actions">${actionGroupContent}</span>` : '';
       let out = `
         <tr class="main-row has-psn ${parity} ${isExpanded?'expanded':''}" data-key="${escapeHtml(key)}">
-          <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
-          <td><span class="caret">${(multi||admin)?'▸':''}</span>${displayName}${starBtn}${nameCopyBtn}${actionGroup}</td>
+          <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}>${starBtnCol}</td>
+          <td><span class="caret">${(multi||admin)?'▸':''}</span>${displayName}${starBtnInline}${nameCopyBtn}${actionGroup}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden: personHidden, showActions:false, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
           <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
@@ -3506,13 +3702,16 @@ function render(){
       const gSelKey = 'g::'+groupKey;
       const rowChecked = selected.has(gSelKey) ? 'checked' : '';
       const fav = isGroupFavorite(members);
-      const starBtn = admin
-        ? `<button class="icon-btn star-btn chip-btn chip-icon ${fav?'chip-accent':''}" data-group-key="${escapeHtml(groupKey)}" title="${fav?'unpin':'pin to favorites'}">${fav?'★':'☆'}</button>`
-        : (fav ? `<span class="chip-btn chip-icon chip-accent">★</span>` : '');
+      const starBtnInline = viewerId
+        ? `<button class="icon-btn star-btn star-btn-inline chip-btn chip-icon ${fav?'chip-accent':''}" data-group-key="${escapeHtml(groupKey)}" title="${fav?'unpin':'pin to favorites'}">${fav?'★':'☆'}</button>`
+        : (fav ? `<span class="chip-btn chip-icon chip-accent star-btn-inline">★</span>` : '');
+      const starBtnCol = viewerId
+        ? `<button class="icon-btn star-btn star-btn-col chip-btn chip-icon ${fav?'chip-accent':''}" data-group-key="${escapeHtml(groupKey)}" title="${fav?'unpin':'pin to favorites'}">${fav?'★':'☆'}</button>`
+        : (fav ? `<span class="chip-btn chip-icon chip-accent star-btn-col">★</span>` : '');
       return `
         <tr class="main-row has-psn group-header ${parity}" data-group-key="${escapeHtml(groupKey)}">
-          <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(gSelKey)}" ${rowChecked}></td>
-          <td><span class="caret">▸</span>${escapeHtml(face.username)}${starBtn}<span class="badge chip-btn chip-accent group-badge" data-group-key="${escapeHtml(groupKey)}">+${members.length-1} account${members.length-1>1?'s':''}</span></td>
+          <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(gSelKey)}" ${rowChecked}>${starBtnCol}</td>
+          <td><span class="caret">▸</span>${escapeHtml(face.username)}${starBtnInline}<span class="badge chip-btn chip-accent group-badge" data-group-key="${escapeHtml(groupKey)}">+${members.length-1} account${members.length-1>1?'s':''}</span></td>
           <td>${ipCell(latest.ip, [], {hidden: isPersonHidden(latest.username), showActions:false, sharedWith:sharedIpUsers(latest.ip, face.username)})}</td>
           <td>${locationCell(latest.location)}</td>
           <td class="last-seen">${formatLastSeen(firstSeen)}</td>
@@ -3557,7 +3756,7 @@ function render(){
           ${th('ip','Latest IP')}
           ${th('location','Latest Location')}
           ${th('firstSeen','First Seen')}
-          ${th('lastSeen','Last Seen')}
+          ${th('lastSeen','Seen')}
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
@@ -3654,7 +3853,7 @@ function render(){
         <table class="unlabeled-table">
           <thead><tr>
             <th class="checkbox-col"><input type="checkbox" id="selectAllUnlabeled" class="row-check" ${allUnlabeledChecked?'checked':''}></th>
-            <th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th><th>First Seen</th><th>Last Seen</th>
+            <th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th><th>First Seen</th><th>Seen</th>
           </tr></thead>
           <tbody>
             ${filteredUnlabeled.map(u=>{
@@ -3763,6 +3962,16 @@ function render(){
       copyToClipboard(btn.dataset.copy, btn);
     });
   });
+  document.querySelectorAll('.star-btn').forEach(btn=>{
+    btn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(btn.dataset.groupKey){
+        toggleGroupFavorite(btn.dataset.groupKey);
+      } else {
+        toggleFavorite(btn.dataset.uname);
+      }
+    });
+  });
   if(admin){
     document.querySelectorAll('.del-btn').forEach(btn=>{
       btn.addEventListener('click', (e)=>{
@@ -3807,16 +4016,6 @@ function render(){
         promptTogglePersonHidden(btn.dataset.uname);
       });
     });
-    document.querySelectorAll('.star-btn').forEach(btn=>{
-      btn.addEventListener('click', (e)=>{
-        e.stopPropagation();
-        if(btn.dataset.groupKey){
-          toggleGroupFavorite(btn.dataset.groupKey);
-        } else {
-          toggleFavorite(btn.dataset.uname);
-        }
-      });
-    });
   }
 }
 
@@ -3846,7 +4045,7 @@ function escapeHtml(s){
 
 search.addEventListener('input', render);
 exportBtn.addEventListener('click', exportFilteredCSV);
-changePassBtn.addEventListener('click', openChangePassword);
+manageViewersBtn.addEventListener('click', openManageViewerIds);
 
 init();
 </script>
