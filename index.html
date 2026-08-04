@@ -3263,7 +3263,8 @@ function renderFavoritesTable(){
       const hiddenFlag = isPersonHidden(latest ? latest.username : face.username);
       return `
         <tr class="fav-row" data-group-key="${escapeHtml(groupKey)}">
-          <td>${starBtn} ${escapeHtml(face.username)}<span class="badge chip-btn chip-accent">+${count-1}</span></td>
+          <td class="checkbox-col">${starBtn}</td>
+          <td>${escapeHtml(face.username)}<span class="badge chip-btn chip-accent">+${count-1}</span></td>
           <td>${ipCell(ip, [], {hidden:hiddenFlag, showActions:false})}</td>
           <td class="last-seen">${formatLastSeen(latest?latest.addedAt:'')}</td>
         </tr>`;
@@ -3275,7 +3276,8 @@ function renderFavoritesTable(){
       : `<span class="chip-btn chip-icon chip-accent">★</span>`;
     return `
       <tr class="fav-row" data-key="${escapeHtml(u.username.toLowerCase())}">
-        <td>${starBtn} ${escapeHtml(u.username)}</td>
+        <td class="checkbox-col">${starBtn}</td>
+        <td>${escapeHtml(u.username)}</td>
         <td>${ipCell(u.latestIp, [], {hidden:personHidden, showActions:false})}</td>
         <td class="last-seen">${formatLastSeen(u.latestAddedAt)}</td>
       </tr>`;
@@ -3285,7 +3287,7 @@ function renderFavoritesTable(){
     <section class="block fav-block">
       <p class="block-title"><span class="fav-star">★</span> Favorites <span class="n">(${items.length})</span></p>
       <table class="fav-table">
-        <thead><tr><th>PSN ID</th><th>Latest IP</th><th>Last Seen</th></tr></thead>
+        <thead><tr><th class="checkbox-col"></th><th>PSN ID</th><th>Latest IP</th><th>Last Seen</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </section>`;
