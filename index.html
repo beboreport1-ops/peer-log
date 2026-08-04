@@ -2716,11 +2716,13 @@ function buildCsvLines(userList, unlabeledList){
   const lines = [['Label','PSN ID','IP','Location','IP History Count','First Seen','Last Seen'].map(csvEscape).join(',')];
   userList.forEach(u=>{
     const labelVal = (labels.get(u.username.toLowerCase()) || {}).label || '';
-    lines.push([labelVal, u.username, u.latestIp, u.latestLocation, u.history.length, u.firstAddedAt||'', u.latestAddedAt||''].map(csvEscape).join(','));
+    const ipVal = isPersonHidden(u.username) ? maskIp(u.latestIp) : u.latestIp;
+    lines.push([labelVal, u.username, ipVal, u.latestLocation, u.history.length, u.firstAddedAt||'', u.latestAddedAt||''].map(csvEscape).join(','));
   });
   unlabeledList.forEach(u=>{
     const labelVal = (labels.get(u.labelKey) || {}).label || '';
-    lines.push([labelVal, '', u.ip, u.location, u.count, u.firstAddedAt||'', u.addedAt||''].map(csvEscape).join(','));
+    const ipVal = ipHidden.get(u.ip) ? maskIp(u.ip) : u.ip;
+    lines.push([labelVal, '', ipVal, u.location, u.count, u.firstAddedAt||'', u.addedAt||''].map(csvEscape).join(','));
   });
   return lines;
 }
@@ -2761,8 +2763,9 @@ function formatDateYMD(iso){
 
 function buildTextExport(userList){
   return userList.map(u => {
+    const hidden = isPersonHidden(u.username);
     const entries = u.history.map((h, i) =>
-      `  ${i+1}- IP: ${h.ip} | Loc: ${h.location || '—'} | Date: ${formatDateYMD(h.addedAt)}`
+      `  ${i+1}- IP: ${hidden ? maskIp(h.ip) : h.ip} | Loc: ${h.location || '—'} | Date: ${formatDateYMD(h.addedAt)}`
     );
     return `PSN ID: ${u.username}\nIPs:\n${entries.join('\n\n')}`;
   }).join('\n\n\n');
