@@ -1448,117 +1448,29 @@
       transform:scale(.996);
     }
 
-    /* ---- Stacked/card layout under 640px: no horizontal overflow,
-       Location + Last Seen remain visible with inline labels ---- */
-    .main-table, .unlabeled-table{ border-collapse:separate; }
-    .main-table thead, .unlabeled-table thead{
-      position:absolute; left:-9999px; top:auto;
-      width:1px; height:1px; overflow:hidden;
-    }
-    .main-table tbody, .unlabeled-table tbody,
-    .main-table tr, .unlabeled-table tr,
-    .main-table td, .unlabeled-table td{
-      display:block;
-      width:100%;
-      box-sizing:border-box;
-      max-width:100%;
-    }
-    .main-table tr, .unlabeled-table tr{
-      border:1px solid rgba(255,255,255,0.08);
-      border-radius:10px;
-      padding:14px 16px;
-      margin-bottom:14px;
-      background:rgba(255,255,255,0.02);
-    }
-    .main-table td, .unlabeled-table td{
-      padding:9px 0 9px 34%;
-      position:relative;
-      border:none;
-      border-bottom:1px solid rgba(255,255,255,0.04);
-      white-space:normal;
-      word-break:break-word;
-      overflow-wrap:anywhere;
-      min-height:30px;
-      font-size:12.5px;
-      line-height:1.55;
-    }
-    .main-table td:last-child, .unlabeled-table td:last-child{
-      border-bottom:none;
-      padding-bottom:4px;
-    }
-    .main-table td::before, .unlabeled-table td::before{
-      position:absolute;
-      left:0; top:9px;
-      width:30%;
-      padding-right:10px;
-      font-size:10.5px;
-      letter-spacing:0.09em;
-      text-transform:uppercase;
-      opacity:0.55;
-      font-weight:600;
-    }
-    /* Column labels via nth-of-type — main table (no Label column, PSN ID always present):
-       1 checkbox | 2 PSN ID | 3 IP | 4 Location | 5 First Seen | 6 Last Seen */
-    .main-table td:nth-of-type(2)::before{ content:"PSN ID"; }
-    .main-table td:nth-of-type(3)::before{ content:"IP"; }
-    .main-table td:nth-of-type(4)::before{ content:"Location"; }
-    .main-table td:nth-of-type(5)::before{ content:"First Seen"; }
-    .main-table td:nth-of-type(6)::before{ content:"Last Seen"; }
-    /* Unlabeled table:
-       1 checkbox | 2 Label | 3 IP | 4 Location | 5 Times Seen | 6 First Seen | 7 Last Seen */
-    .unlabeled-table td:nth-of-type(2)::before{ content:"Label"; }
-    .unlabeled-table td:nth-of-type(3)::before{ content:"IP"; }
-    .unlabeled-table td:nth-of-type(4)::before{ content:"Location"; }
-    .unlabeled-table td:nth-of-type(5)::before{ content:"Times Seen"; }
-    .unlabeled-table td:nth-of-type(6)::before{ content:"First Seen"; }
-    .unlabeled-table td:nth-of-type(7)::before{ content:"Last Seen"; }
-    /* checkbox cell: full-width, no label */
-    .main-table td.checkbox-col, .unlabeled-table td.checkbox-col{
-      padding:6px 0 12px 0;
-      border-bottom:1px solid rgba(255,255,255,0.06);
-    }
-    .main-table td.checkbox-col::before, .unlabeled-table td.checkbox-col::before{
-      content:""; display:none;
-    }
-    /* IP-history sub-rows keep four empty leading cells — hide them so the
-       stacked card shows only IP / Location / Last Seen for that history entry */
-    .main-table tbody tr td:empty{ display:none; }
-
-    /* The desktop hist-row rules (tree-mark, tighter padding) have higher
-       CSS specificity than the generic card rule above, so on mobile they
-       were winning and causing the Location/Last Seen labels to overlap
-       the actual text. Restore card padding/position for hist-row cells,
-       and bake the extra left gap into the td itself (not the tr) since
-       padding on <tr> is unreliable in some mobile browsers even with
-       display:block. */
-    .main-table tr.hist-row td{
-      padding:9px 16px 9px calc(34% + 18px) !important;
-      position:relative;
-      font-size:12.5px;
-    }
-    .main-table tr.hist-row td::before{
-      left:18px !important;
-    }
-    .main-table tr.hist-row td:nth-child(3)::before{
-      content:"IP";
-      position:absolute;
-      top:9px;
-      width:30%;
-      padding-right:10px;
-      font-size:10.5px;
-      letter-spacing:0.09em;
-      text-transform:uppercase;
-      opacity:0.55;
-      font-weight:600;
-    }
-
-    /* The desktop "small gap before IP" rule (18px) has higher specificity
-       than the generic card rule, so it was winning here too and pulling
-       the IP value in flush against its label instead of lining up with
-       Location/Last Seen. Restore the 34% card offset for main rows. */
-    .main-table tbody td:nth-child(3){
-      padding-left:34% !important;
-    }
+    /* ---- Mobile: simple compact table (matches the Favorites table style)
+       instead of stacked cards. Only the essentials show; everything else
+       (checkboxes, bulk actions, extra columns, inline edit/hide/delete)
+       is desktop-only — tap a row for the rest via a popup. ---- */
+    .main-table, .unlabeled-table{font-size:12px;}
+    .main-table thead th, .unlabeled-table thead th{padding:10px 10px;font-size:10px;}
+    .main-table tbody td, .unlabeled-table tbody td{padding:11px 10px;font-size:12.5px;}
+    .main-table .checkbox-col, .unlabeled-table .checkbox-col{display:none;}
+    /* main table columns: 1 checkbox | 2 PSN ID | 3 IP | 4 Location | 5 First Seen | 6 Last Seen
+       keep PSN ID / Latest IP / Last Seen, hide the rest */
+    .main-table thead th:nth-child(4), .main-table tbody td:nth-child(4),
+    .main-table thead th:nth-child(5), .main-table tbody td:nth-child(5){display:none;}
+    /* unlabeled table columns: 1 checkbox | 2 Label | 3 IP | 4 Location | 5 Times Seen | 6 First Seen | 7 Last Seen
+       keep IP / Location / Last Seen, hide the rest */
+    .unlabeled-table thead th:nth-child(2), .unlabeled-table tbody td:nth-child(2),
+    .unlabeled-table thead th:nth-child(5), .unlabeled-table tbody td:nth-child(5),
+    .unlabeled-table thead th:nth-child(6), .unlabeled-table tbody td:nth-child(6){display:none;}
+    /* history sub-rows and inline action groups only ever appear on desktop
+       now (mobile taps open a popup instead), but keep them harmless if any
+       leftover state renders one anyway */
+    .main-table tr.hist-row{display:none;}
+    .main-table .uname-actions, .main-table .ip-actions,
+    .unlabeled-table .uname-actions, .unlabeled-table .ip-actions{display:none;}
   }
 </style>
 </head>
@@ -2837,6 +2749,185 @@ function groupLatestRecord(members){
   return best;
 }
 
+function isMobileView(){
+  return window.matchMedia('(max-width:640px)').matches;
+}
+
+function openUnlabeledModal(labelKey){
+  const admin = isAdmin();
+  const u = unlabeled.find(x => x.labelKey === labelKey);
+  if(!u){ showToast('entry no longer exists'); return; }
+  const rowHidden = ipHidden.get(u.ip) || false;
+
+  const addPsnBtn = admin
+    ? `<button class="icon-btn add-psn-btn chip-btn chip-ghost" data-ids="${u.ids.join(',')}" data-ip="${escapeHtml(u.ip)}" title="assign a PSN ID to this IP">+ add PSN ID</button>`
+    : '';
+  const hideBtn = ipHideBtn(u.ip, rowHidden);
+  const delBtn = ipDelBtn(u.ip, u.ids);
+  const copyBtn = `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.ip)}" title="copy IP">⧉</button>`;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box group-modal-box">
+      <h3>No PSN ID</h3>
+      <div class="modal-fields group-modal-scroll">
+        <div class="group-ip-row">
+          <div class="group-ip-main">
+            <span class="ip">${u.ip ? escapeHtml(rowHidden ? maskIp(u.ip) : u.ip) : '—'}</span>
+            ${copyBtn}
+          </div>
+          <div class="group-ip-sub">${locationCell(u.location)} · first seen ${formatLastSeen(u.firstAddedAt)} · last seen ${formatLastSeen(u.addedAt)} · seen ${u.count}×</div>
+        </div>
+        <div class="group-psn-actions-line" style="margin-top:14px;">
+          ${addPsnBtn}${hideBtn}${delBtn}
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn primary" id="unlabeledModalCloseBtn">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  function close(){ overlay.remove(); }
+  overlay.addEventListener('click', e => { if(e.target===overlay) close(); });
+  overlay.querySelector('#unlabeledModalCloseBtn').addEventListener('click', close);
+
+  overlay.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> copyToClipboard(btn.dataset.copy, btn));
+  });
+  overlay.querySelectorAll('.add-psn-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const ids = btn.dataset.ids.split(',').filter(Boolean).map(Number);
+      close();
+      promptLinkOrAddUsername({ids, location: u.location, ip: btn.dataset.ip});
+    });
+  });
+  overlay.querySelectorAll('.eye-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      close();
+      await promptToggleIpHidden(btn.dataset.ip);
+      openUnlabeledModal(labelKey);
+    });
+  });
+  overlay.querySelectorAll('.del-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const ids = btn.dataset.ids.split(',').filter(Boolean).map(Number);
+      close();
+      await promptDeleteIp(ids, btn.dataset.ip);
+    });
+  });
+}
+
+function openPlayerModal(username){
+  const admin = isAdmin();
+  const u = users.find(x => x.username.toLowerCase() === username.toLowerCase());
+  if(!u){ showToast('player not found'); return; }
+  const personHidden = isPersonHidden(u.username);
+  const fav = isFavorite(u.username);
+
+  const starBtn = admin
+    ? `<button class="icon-btn star-btn chip-btn chip-icon ${fav?'chip-accent':''}" data-uname="${escapeHtml(u.username)}" title="${fav?'unpin':'pin to favorites'}">${fav?'★':'☆'}</button>`
+    : (fav ? `<span class="chip-btn chip-icon chip-accent">★</span>` : '');
+  const copyBtn = `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.username)}" title="copy PSN ID">⧉</button>`;
+  const editBtn = admin
+    ? `<button class="icon-btn edit-psn-btn chip-btn" data-ids="${u.history.flatMap(h=>h.ids).join(',')}" data-uname="${escapeHtml(u.username)}" title="edit PSN ID">Edit</button>`
+    : '';
+  const addIpBtn = admin
+    ? `<button class="icon-btn add-ip-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="add an IP">+ IP</button>`
+    : '';
+  const addPsnLinkBtn = admin
+    ? `<button class="icon-btn add-psn-link-btn chip-btn chip-ghost" data-uname="${escapeHtml(u.username)}" title="link another PSN ID as the same person">+ Add PSN ID</button>`
+    : '';
+  const hideBtn = personHideBtn(u.username);
+
+  const historyRows = u.history.map((h, i) => `
+    <div class="group-ip-row">
+      <div class="group-ip-main">
+        <span class="ip">${h.ip ? escapeHtml(personHidden ? maskIp(h.ip) : h.ip) : '—'}</span>
+        ${h.ip?`<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(h.ip)}" title="copy IP">⧉</button>`:''}
+        ${i===0?'<span class="hist-tag">latest</span>':''}
+      </div>
+      <div class="group-ip-sub">${locationCell(h.location)} · first seen ${formatLastSeen(h.firstAddedAt)} · last seen ${formatLastSeen(h.addedAt)}</div>
+      ${(admin && h.ip)?`<div class="group-ip-actions">${ipDelBtn(h.ip, h.ids)}</div>`:''}
+    </div>`).join('');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal-box group-modal-box">
+      <h3>${escapeHtml(u.username)}</h3>
+      <div class="modal-fields group-modal-scroll">
+        <div class="group-psn-row">
+          <div class="group-psn-name-line">
+            <span class="group-member-name">${escapeHtml(u.username)}</span>
+            ${copyBtn}${starBtn}
+          </div>
+          <div class="group-psn-actions-line">
+            ${editBtn}${addIpBtn}${addPsnLinkBtn}${hideBtn}
+          </div>
+        </div>
+        <div class="group-section-sublabel">IP History</div>
+        ${historyRows || '<div class="group-ip-empty">—</div>'}
+      </div>
+      <div class="modal-actions">
+        <button class="btn primary" id="playerModalCloseBtn">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  function close(){ overlay.remove(); }
+  overlay.addEventListener('click', e => { if(e.target===overlay) close(); });
+  overlay.querySelector('#playerModalCloseBtn').addEventListener('click', close);
+
+  overlay.querySelectorAll('.copy-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> copyToClipboard(btn.dataset.copy, btn));
+  });
+  overlay.querySelectorAll('.star-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      close();
+      await toggleFavorite(btn.dataset.uname);
+      openPlayerModal(username);
+    });
+  });
+  overlay.querySelectorAll('.edit-psn-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const ids = btn.dataset.ids.split(',').filter(Boolean).map(Number);
+      close();
+      await promptAssignUsername({ids, currentUsername: btn.dataset.uname, title: `Edit PSN ID for ${btn.dataset.uname}`, submitLabel:'Save'});
+    });
+  });
+  overlay.querySelectorAll('.add-ip-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      close();
+      await promptAddIpToUser(btn.dataset.uname);
+      openPlayerModal(username);
+    });
+  });
+  overlay.querySelectorAll('.add-psn-link-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      close();
+      await promptAddPsnIdLink(btn.dataset.uname);
+    });
+  });
+  overlay.querySelectorAll('.person-hide-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      close();
+      await promptTogglePersonHidden(btn.dataset.uname);
+      openPlayerModal(username);
+    });
+  });
+  overlay.querySelectorAll('.del-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const ids = btn.dataset.ids.split(',').filter(Boolean).map(Number);
+      close();
+      await promptDeleteIp(ids, btn.dataset.ip);
+      const stillExists = users.some(x => x.username.toLowerCase() === username.toLowerCase());
+      if(stillExists) openPlayerModal(username);
+    });
+  });
+}
+
 function openGroupModal(groupKey){
   const admin = isAdmin();
   const memberKeys = membersOfGroupKey(groupKey);
@@ -3522,6 +3613,11 @@ function render(){
         }
         const key = tr.dataset.key;
         if(!key) return;
+        if(isMobileView()){
+          const u = users.find(x => x.username.toLowerCase() === key);
+          if(u) openPlayerModal(u.username);
+          return;
+        }
         if(expanded.has(key)) expanded.delete(key);
         else expanded.add(key);
         render();
@@ -3632,6 +3728,10 @@ function render(){
         tr.addEventListener('click', e=>{
           if(e.target.closest('.icon-btn') || e.target.closest('.label-input') || e.target.closest('.row-check') || e.target.closest('.add-psn-btn')) return;
           const lk = tr.dataset.labelKey;
+          if(isMobileView()){
+            openUnlabeledModal(lk);
+            return;
+          }
           if(revealedUnlabeled.has(lk)) revealedUnlabeled.delete(lk);
           else revealedUnlabeled.add(lk);
           render();
