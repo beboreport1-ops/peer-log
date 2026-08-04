@@ -1459,32 +1459,23 @@
     /* ---- Mobile: simple compact table (matches the Favorites table style)
        instead of stacked cards. Only the essentials show; everything else
        (checkboxes, bulk actions, extra columns, inline edit/hide/delete)
-       is desktop-only — tap a row for the rest via a popup. ---- */
-    .main-table, .unlabeled-table{font-size:12.5px;table-layout:fixed;width:100%;}
-    .main-table thead th, .unlabeled-table thead th{padding:10px 6px;font-size:10.5px;}
-    .main-table tbody td, .unlabeled-table tbody td{padding:12px 6px;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;}
-    .fav-table{table-layout:fixed;width:100%;font-size:12.5px;}
-    .fav-table thead th{padding:10px 6px;font-size:10.5px;}
-    .fav-table tbody td{padding:11px 6px;overflow:hidden;text-overflow:ellipsis;}
-    .fav-table .checkbox-col{width:38px;padding:6px 2px;overflow:visible;}
-    .fav-table thead th:nth-child(2), .fav-table tbody td:nth-child(2){width:32%;white-space:nowrap;}
-    .fav-table thead th:nth-child(3), .fav-table tbody td:nth-child(3){width:32%;padding-right:12px;}
-    .fav-table thead th:nth-child(4), .fav-table tbody td:nth-child(4){width:30%;padding-left:12px;}
-    /* explicit widths for the columns still visible on mobile so nothing
-       has to fight for space and force a horizontal zoom */
-    .main-table thead th:nth-child(2), .main-table tbody td:nth-child(2){width:32%;white-space:nowrap;}
-    .main-table thead th:nth-child(3), .main-table tbody td:nth-child(3){width:32%;padding-right:12px;}
-    .main-table thead th:nth-child(6), .main-table tbody td:nth-child(6){width:26%;padding-left:12px;}
-    .unlabeled-table thead th:nth-child(3), .unlabeled-table tbody td:nth-child(3){width:34%;}
-    .unlabeled-table thead th:nth-child(4), .unlabeled-table tbody td:nth-child(4){width:36%;white-space:nowrap;}
-    .unlabeled-table thead th:nth-child(7), .unlabeled-table tbody td:nth-child(7){width:30%;padding-left:12px;}
+       is desktop-only — tap a row for the rest via a popup. Columns size
+       naturally now (not squeezed into fixed %) so the IP text + its copy
+       button always have room; the table scrolls horizontally on very
+       narrow screens instead of clipping anything. ---- */
+    #mainHolder, #favoritesHolder, #unlabeledHolder{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+    .main-table, .unlabeled-table, .fav-table{font-size:12.5px;min-width:100%;width:max-content;}
+    .main-table thead th, .unlabeled-table thead th, .fav-table thead th{padding:10px 10px;font-size:10.5px;white-space:nowrap;}
+    .main-table tbody td, .unlabeled-table tbody td, .fav-table tbody td{padding:12px 10px;font-size:12.5px;white-space:nowrap;}
+    .fav-table .checkbox-col{width:38px;padding:6px 2px;}
+    .main-table thead th:nth-child(2), .main-table tbody td:nth-child(2){max-width:170px;overflow:hidden;text-overflow:ellipsis;}
+    .fav-table thead th:nth-child(2), .fav-table tbody td:nth-child(2){max-width:170px;overflow:hidden;text-overflow:ellipsis;}
     /* PSN ID cell gets crowded with caret + star + copy + long names — drop
-       the caret and inline copy buttons on mobile, tapping the row (which
-       always opens the detail popup now) covers both anyway. Also drop the
-       IP's own copy button so the full IP digits never get truncated. */
-    .main-table .main-row .caret, .main-table .main-row .copy-btn, .main-table .badge, .fav-table .badge{display:none;}
-    .main-table .ip-cell .copy-btn, .fav-table .ip-cell .copy-btn, .unlabeled-table .ip-cell .copy-btn{display:none;}
-    .main-table .last-seen, .fav-table tbody td:last-child, .unlabeled-table .last-seen{white-space:nowrap;}
+       the caret and inline copy button there on mobile (tapping the row,
+       which always opens the detail popup now, covers both anyway). The
+       IP's own copy button always stays and always has room now. */
+    .main-table .main-row .caret, .main-table .main-row td:nth-child(2) .copy-btn, .main-table .badge, .fav-table .badge{display:none;}
+    .main-table .ip-line, .fav-table .ip-line, .unlabeled-table .ip-line{display:flex;align-items:center;gap:4px;}
     .unlabeled-table .checkbox-col{display:none;}
     .main-table .checkbox-col{width:38px;padding:6px 2px;overflow:visible;}
     .main-table .checkbox-col input[type=checkbox]{display:none;}
@@ -2957,7 +2948,7 @@ function openUnlabeledModal(labelKey){
     : '';
   const hideBtn = ipHideBtn(u.ip, rowHidden);
   const delBtn = ipDelBtn(u.ip, u.ids);
-  const copyBtn = `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(u.ip)}" title="copy IP">⧉</button>`;
+  const copyBtn = `<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(rowHidden ? maskIp(u.ip) : u.ip)}" title="copy IP">⧉</button>`;
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -3034,16 +3025,19 @@ function openPlayerModal(username){
     : '';
   const hideBtn = personHideBtn(u.username);
 
-  const historyRows = u.history.map((h, i) => `
+  const historyRows = u.history.map((h, i) => {
+    const hVal = h.ip ? (personHidden ? maskIp(h.ip) : h.ip) : '';
+    return `
     <div class="group-ip-row">
       <div class="group-ip-main">
-        <span class="ip">${h.ip ? escapeHtml(personHidden ? maskIp(h.ip) : h.ip) : '—'}</span>
-        ${h.ip?`<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(h.ip)}" title="copy IP">⧉</button>`:''}
+        <span class="ip">${hVal ? escapeHtml(hVal) : '—'}</span>
+        ${h.ip?`<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(hVal)}" title="copy IP">⧉</button>`:''}
         ${i===0?'<span class="hist-tag">latest</span>':''}
       </div>
       <div class="group-ip-sub">${locationCell(h.location)} · first seen ${formatLastSeen(h.firstAddedAt)} · last seen ${formatLastSeen(h.addedAt)}</div>
       ${(admin && h.ip)?`<div class="group-ip-actions">${ipDelBtn(h.ip, h.ids)}</div>`:''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -3169,16 +3163,19 @@ function openGroupModal(groupKey){
   const latest = allRecords[0];
   const rest = allRecords.slice(1);
 
-  const ipRow = (h, tag) => `
+  const ipRow = (h, tag) => {
+    const hVal = h.ip ? (isPersonHidden(h.username) ? maskIp(h.ip) : h.ip) : '';
+    return `
     <div class="group-ip-row">
       <div class="group-ip-main">
-        <span class="ip">${h.ip ? escapeHtml(isPersonHidden(h.username) ? maskIp(h.ip) : h.ip) : '—'}</span>
-        ${h.ip?`<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(h.ip)}" title="copy IP">⧉</button>`:''}
+        <span class="ip">${hVal ? escapeHtml(hVal) : '—'}</span>
+        ${h.ip?`<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(hVal)}" title="copy IP">⧉</button>`:''}
         ${tag?`<span class="hist-tag">${tag}</span>`:''}
       </div>
       <div class="group-ip-sub">${locationCell(h.location)} · ${formatLastSeen(h.addedAt)} · <span class="group-ip-owner">${escapeHtml(h.username)}</span></div>
       ${(admin && h.ip)?`<div class="group-ip-actions">${ipDelBtn(h.ip, h.ids)}</div>`:''}
     </div>`;
+  };
 
   const groupHideBtn = admin ? `<button class="btn warn" id="grpModalHideBtn">Hide Group</button>` : '';
   const groupDelBtn = admin ? `<button class="btn danger" id="grpModalDelBtn">Delete Group</button>` : '';
@@ -3601,6 +3598,27 @@ function renderFavoritesTable(){
   });
 }
 
+// Counts distinct player identities — a linked group (multiple PSN IDs,
+// same person) counts once, not once per linked account, so this reflects
+// how many actual people are tracked rather than how many PSN ID strings.
+function countDistinctPlayers(list){
+  const seenGroups = new Set();
+  let count = 0;
+  list.forEach(u => {
+    const gk = groupKeyOf(u.username);
+    if(gk){
+      const members = membersOfGroupKey(gk);
+      if(members.length < 2){ count++; return; }
+      if(seenGroups.has(gk)) return;
+      seenGroups.add(gk);
+      count++;
+    } else {
+      count++;
+    }
+  });
+  return count;
+}
+
 function render(){
   const q = search.value.trim().toLowerCase();
   const admin = isAdmin();
@@ -3620,7 +3638,7 @@ function render(){
     return 0;
   });
 
-  countEl.innerHTML = `<b>${list.length}</b>players${q?` (of ${users.length})`:''}`;
+  countEl.innerHTML = `<b>${countDistinctPlayers(list)}</b>players${q?` (of ${countDistinctPlayers(users)})`:''}`;
 
   if(!users.length && !unlabeled.length){
     mainHolder.innerHTML = '';
@@ -3837,7 +3855,7 @@ function render(){
     });
   }
 
-  const filteredUnlabeled = unlabeled.filter(u => !q);
+  const filteredUnlabeled = admin ? unlabeled.filter(u => !q) : [];
 
   if(!filteredUnlabeled.length){
     unlabeledHolder.innerHTML = '';
@@ -4028,7 +4046,7 @@ function csvEscape(v){
 function exportFilteredCSV(){
   const q = search.value.trim().toLowerCase();
   const list = users.filter(u => matchesQuery(u, q));
-  const filteredUnlabeled = unlabeled.filter(u => !q);
+  const filteredUnlabeled = isAdmin() ? unlabeled.filter(u => !q) : [];
 
   if(!list.length && !filteredUnlabeled.length){
     showToast('nothing to export');
