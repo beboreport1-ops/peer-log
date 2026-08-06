@@ -1239,6 +1239,18 @@
   .group-ip-main{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .group-ip-main .ip{color:var(--phosphor-dim);font-size:12px;}
   .group-ip-sub{font-size:11px;color:var(--text-soft);margin-top:4px;}
+  .hide-viewer-hint{font-size:11px;color:var(--text-soft);margin:0 0 14px;line-height:1.5;}
+  .hide-viewer-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:10px 4px;
+    border-bottom:1px solid var(--line-2);
+    font-size:13px;
+    cursor:pointer;
+  }
+  .hide-viewer-row:last-child{border-bottom:none;}
+  .hide-viewer-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--phosphor);cursor:pointer;}
   .group-ip-owner{color:var(--phosphor-mute);}
   .group-ip-actions{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;}
   .group-ip-empty{color:var(--text-soft);font-size:12px;padding:8px 0;}
@@ -1637,6 +1649,8 @@ let keyHash = null;
 let role = null;           // 'view' | 'admin'
 let viewerId = null;       // which viewer ID is logged in (or '__admin__' for admin's own favorites)
 let myFavorites = new Set(); // username_keys favorited by the current logged-in viewer/admin
+let myHiddenSet = new Set(); // (viewer only) username_keys hidden from ME specifically
+let hiddenForViewerMap = new Map(); // (admin only) username_key -> Set of viewer_ids that can't see them
 
 const appEl = document.getElementById('app');
 const gateScreenEl = document.getElementById('gateScreen');
@@ -2062,6 +2076,7 @@ async function showApp(){
   restoreBtn.style.display = isAdmin() ? 'inline-block' : 'none';
 
   await loadMyFavoritesData();
+  await loadHiddenForViewerData();
 
   if(isAdmin() && getPendingRows().length){
     await flushPendingUploads();
@@ -2117,6 +2132,31 @@ async function loadMyFavoritesData(){
   }catch(e){
     console.error(e);
     myFavorites = new Set();
+  }
+}
+
+async function loadHiddenForViewerData(){
+  try{
+    if(isAdmin()){
+      const rows = await sbFetch('peer_hidden_for_viewer?select=viewer_id,username_key') || [];
+      hiddenForViewerMap = new Map();
+      rows.forEach(r => {
+        if(!hiddenForViewerMap.has(r.username_key)) hiddenForViewerMap.set(r.username_key, new Set());
+        hiddenForViewerMap.get(r.username_key).add(r.viewer_id);
+      });
+      myHiddenSet = new Set();
+    } else if(viewerId){
+      const rows = await sbFetch(`peer_hidden_for_viewer?select=username_key&viewer_id=eq.${encodeURIComponent(viewerId)}`);
+      myHiddenSet = new Set((rows||[]).map(r => r.username_key));
+      hiddenForViewerMap = new Map();
+    } else {
+      myHiddenSet = new Set();
+      hiddenForViewerMap = new Map();
+    }
+  }catch(e){
+    console.error('failed to load hidden-for-viewer data', e);
+    myHiddenSet = new Set();
+    hiddenForViewerMap = new Map();
   }
 }
 
@@ -2303,24 +2343,86 @@ async function promptToggleIpHidden(ip){
 }
 
 function isPersonHidden(username){
-  return (labels.get((username||'').toLowerCase()) || {}).hidden || false;
+  if(isAdmin()) return false; // admin always sees everything, regardless of per-viewer hiding
+  return myHiddenSet.has((username||'').toLowerCase());
 }
 
-async function promptTogglePersonHidden(username){
+function hiddenViewerCountFor(username){
+  const set = hiddenForViewerMap.get((username||'').toLowerCase());
+  return set ? set.size : 0;
+}
+
+async function promptHideForViewers(usernames){
   if(!isAdmin()) return;
-  const key = username.toLowerCase();
-  const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
-  const goingToHide = !current.hidden;
-  await confirmModal({
-    title: goingToHide ? `Hide ${username}? (all their IPs, including future ones)` : `Unhide ${username}?`,
-    submitLabel: goingToHide ? 'Hide' : 'Unhide',
-    danger: goingToHide,
-    onConfirm: async () => {
-      labels.set(key, {label:current.label, hidden:goingToHide, groupKey:current.groupKey, groupPrimary:current.groupPrimary, favorite:current.favorite});
-      await saveLabelRemote(key, current.label, goingToHide, current.groupKey, current.groupPrimary, current.favorite);
-      render();
-      showToast(`${goingToHide?'hid':'unhid'} ${username}`);
-    }
+  const names = (Array.isArray(usernames) ? usernames : [usernames]).filter(Boolean);
+  if(!names.length) return;
+
+  let viewers = [];
+  try{
+    viewers = await sbFetch('peer_viewers?select=viewer_id&order=viewer_id.asc') || [];
+  }catch(e){
+    showToast('failed to load viewer IDs — check connection', true);
+    return;
+  }
+  if(!viewers.length){
+    showToast('no viewer IDs exist yet — add one first in Manage Viewer IDs');
+    return;
+  }
+
+  const keys = names.map(n => n.toLowerCase());
+  const isCheckedFor = (vid) => keys.every(k => (hiddenForViewerMap.get(k) || new Set()).has(vid));
+
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    const rows = viewers.map(v => `
+      <label class="hide-viewer-row">
+        <input type="checkbox" class="hide-viewer-check" data-vid="${escapeHtml(v.viewer_id)}" ${isCheckedFor(v.viewer_id)?'checked':''}>
+        <span>${escapeHtml(v.viewer_id)}</span>
+      </label>`).join('');
+    overlay.innerHTML = `
+      <div class="modal-box group-modal-box">
+        <h3>Hide ${names.length>1?`${names.length} players`:escapeHtml(names[0])} from…</h3>
+        <div class="modal-fields group-modal-scroll">
+          <p class="hide-viewer-hint">Checked viewer IDs won't see this player's real IP (it'll show masked). Admin always sees everything.</p>
+          ${rows}
+        </div>
+        <div class="modal-actions">
+          <button class="btn" id="hideViewersCancelBtn">Cancel</button>
+          <button class="btn primary" id="hideViewersSaveBtn">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    function close(){ overlay.remove(); resolve(); }
+    overlay.querySelector('#hideViewersCancelBtn').addEventListener('click', close);
+    overlay.addEventListener('click', e => { if(e.target===overlay) close(); });
+    overlay.querySelector('#hideViewersSaveBtn').addEventListener('click', async () => {
+      const checks = [...overlay.querySelectorAll('.hide-viewer-check')];
+      const checkedVids = checks.filter(c=>c.checked).map(c=>c.dataset.vid);
+      const uncheckedVids = checks.filter(c=>!c.checked).map(c=>c.dataset.vid);
+      try{
+        const inserts = [];
+        keys.forEach(key => checkedVids.forEach(vid => inserts.push({viewer_id:vid, username_key:key})));
+        if(inserts.length){
+          await sbFetch('peer_hidden_for_viewer', {
+            method:'POST',
+            headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+            body: JSON.stringify(inserts)
+          });
+        }
+        await Promise.all(keys.flatMap(key => uncheckedVids.map(vid =>
+          sbFetch(`peer_hidden_for_viewer?viewer_id=eq.${encodeURIComponent(vid)}&username_key=eq.${encodeURIComponent(key)}`, {method:'DELETE'})
+        )));
+        await loadHiddenForViewerData();
+        render();
+        showToast('updated who can see this');
+      }catch(e){
+        console.error(e);
+        showToast('failed to save — check connection', true);
+      }
+      close();
+    });
   });
 }
 
@@ -2587,12 +2689,13 @@ async function backupDatabase(){
   if(!isAdmin()) return;
   showToast('preparing backup...');
   try{
-    const [rows, labelRows, ipHiddenRows, viewerRows, favoriteRows] = await Promise.all([
+    const [rows, labelRows, ipHiddenRows, viewerRows, favoriteRows, hiddenForViewerRows] = await Promise.all([
       sbFetch('peer_rows?select=*'),
       sbFetch('peer_labels?select=*'),
       sbFetch('peer_ip_hidden?select=*'),
       sbFetch('peer_viewers?select=*'),
-      sbFetch('peer_favorites?select=*')
+      sbFetch('peer_favorites?select=*'),
+      sbFetch('peer_hidden_for_viewer?select=*')
     ]);
     const backup = {
       exportedAt: new Date().toISOString(),
@@ -2600,7 +2703,8 @@ async function backupDatabase(){
       peer_labels: labelRows || [],
       peer_ip_hidden: ipHiddenRows || [],
       peer_viewers: viewerRows || [],
-      peer_favorites: favoriteRows || []
+      peer_favorites: favoriteRows || [],
+      peer_hidden_for_viewer: hiddenForViewerRows || []
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
@@ -2645,7 +2749,8 @@ async function restoreDatabaseFromFile(file){
           sbFetch('peer_labels?username_key=neq.__none__', {method:'DELETE'}),
           sbFetch('peer_ip_hidden?ip=neq.__none__', {method:'DELETE'}),
           sbFetch('peer_viewers?viewer_id=neq.__none__', {method:'DELETE'}),
-          sbFetch('peer_favorites?viewer_id=neq.__none__', {method:'DELETE'})
+          sbFetch('peer_favorites?viewer_id=neq.__none__', {method:'DELETE'}),
+          sbFetch('peer_hidden_for_viewer?viewer_id=neq.__none__', {method:'DELETE'})
         ]);
         const insertIfAny = (table, rows) => (rows && rows.length)
           ? sbFetch(table, {method:'POST', headers:{'Prefer':'return=minimal'}, body: JSON.stringify(rows)})
@@ -2658,9 +2763,11 @@ async function restoreDatabaseFromFile(file){
           insertIfAny('peer_labels', backup.peer_labels),
           insertIfAny('peer_ip_hidden', backup.peer_ip_hidden),
           insertIfAny('peer_viewers', backup.peer_viewers),
-          insertIfAny('peer_favorites', backup.peer_favorites)
+          insertIfAny('peer_favorites', backup.peer_favorites),
+          insertIfAny('peer_hidden_for_viewer', backup.peer_hidden_for_viewer)
         ]);
         await loadMyFavoritesData();
+        await loadHiddenForViewerData();
         await refreshFromCloud();
         showToast('restore complete');
       }catch(e){
@@ -3661,7 +3768,7 @@ function openPlayerModal(username){
   overlay.querySelectorAll('.person-hide-btn').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       close();
-      await promptTogglePersonHidden(btn.dataset.uname);
+      await promptHideForViewers(btn.dataset.uname);
       openPlayerModal(username);
     });
   });
@@ -3819,7 +3926,7 @@ function openGroupModal(groupKey){
   overlay.querySelectorAll('.person-hide-btn').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
       close();
-      await promptTogglePersonHidden(btn.dataset.uname);
+      await promptHideForViewers(btn.dataset.uname);
       openGroupModal(groupKey);
     });
   });
@@ -3888,27 +3995,47 @@ async function bulkSetHidden(hideFlag){
   const selUnlabeled = getSelectedUnlabeledObjs();
   const total = selUsers.length + selUnlabeled.length;
   if(!total) return;
-  const verb = hideFlag ? 'Hide' : 'Unhide';
+
+  if(hideFlag){
+    // Players: pick which viewer IDs shouldn't see them. Unlabeled IPs still
+    // use the old global per-IP hide (there's no "viewer" identity for those).
+    if(selUsers.length){
+      await promptHideForViewers(selUsers.map(u => u.username));
+    }
+    if(selUnlabeled.length){
+      await Promise.all(selUnlabeled.map(u => {
+        ipHidden.set(u.ip, true);
+        return saveIpHiddenRemote(u.ip, true);
+      }));
+    }
+    selected.clear();
+    render();
+    return;
+  }
+
+  // Unhide: clear every per-viewer hide for the selected players, and
+  // unhide the selected unlabeled IPs globally like before.
   await confirmModal({
-    title: `${verb} ${total} selected row${total>1?'s':''}?${hideFlag?' (players: all IPs incl. future ones; unlabeled: this IP)':''}`,
-    submitLabel: verb,
-    danger: hideFlag,
+    title: `Unhide ${total} selected row${total>1?'s':''}? Players become visible to every viewer again.`,
+    submitLabel: 'Unhide',
+    danger: false,
     onConfirm: async () => {
-      await Promise.all([
-        ...selUsers.map(u => {
-          const key = u.username.toLowerCase();
-          const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
-          labels.set(key, {label:current.label, hidden:hideFlag, groupKey:current.groupKey, groupPrimary:current.groupPrimary, favorite:current.favorite});
-          return saveLabelRemote(key, current.label, hideFlag, current.groupKey, current.groupPrimary, current.favorite);
-        }),
-        ...selUnlabeled.map(u => {
-          ipHidden.set(u.ip, hideFlag);
-          return saveIpHiddenRemote(u.ip, hideFlag);
-        })
-      ]);
-      selected.clear();
-      render();
-      showToast(`${hideFlag?'hid':'unhid'} ${total} row${total>1?'s':''}`);
+      try{
+        await Promise.all([
+          ...selUsers.map(u => sbFetch(`peer_hidden_for_viewer?username_key=eq.${encodeURIComponent(u.username.toLowerCase())}`, {method:'DELETE'})),
+          ...selUnlabeled.map(u => {
+            ipHidden.set(u.ip, false);
+            return saveIpHiddenRemote(u.ip, false);
+          })
+        ]);
+        await loadHiddenForViewerData();
+        selected.clear();
+        render();
+        showToast(`unhid ${total} row${total>1?'s':''}`);
+      }catch(e){
+        console.error(e);
+        showToast('unhide failed — check connection', true);
+      }
     }
   });
 }
@@ -4072,8 +4199,10 @@ function ipHideBtn(ip, hidden){
   return (isAdmin() && ip) ? `<span class="chip-tip warn" data-tooltip="${hidden?'UNHIDE THIS IP':'HIDE THIS IP'}"><button class="icon-btn eye-btn chip-btn chip-warn" data-ip="${escapeHtml(ip)}" aria-label="${hidden?'unhide':'hide'} this IP">${hidden?'Show':'Hide'}</button></span>` : '';
 }
 function personHideBtn(username){
-  const hidden = isPersonHidden(username);
-  return isAdmin() ? `<span class="chip-tip warn" data-tooltip="${hidden?'UNHIDE THIS PERSON':'HIDE THIS PERSON'}"><button class="icon-btn person-hide-btn chip-btn chip-warn" data-uname="${escapeHtml(username)}" aria-label="${hidden?'unhide':'hide'} this person">${hidden?'Show':'Hide'}</button></span>` : '';
+  const count = hiddenViewerCountFor(username);
+  const label = count > 0 ? `Hidden (${count})` : 'Hide';
+  const tip = count > 0 ? `HIDDEN FROM ${count} VIEWER${count>1?'S':''} — CLICK TO CHANGE` : "CHOOSE WHICH VIEWERS CAN'T SEE THIS PERSON";
+  return isAdmin() ? `<span class="chip-tip warn" data-tooltip="${tip}"><button class="icon-btn person-hide-btn chip-btn ${count>0?'chip-warn':'chip-ghost'}" data-uname="${escapeHtml(username)}" aria-label="choose who can't see this person">${label}</button></span>` : '';
 }
 function ipDelBtn(ip, ids){
   return (isAdmin() && ids && ids.length) ? `<span class="chip-tip danger" data-tooltip="DELETE THIS IP"><button class="icon-btn del-btn chip-btn chip-danger" data-ids="${(ids||[]).join(',')}" data-ip="${escapeHtml(ip)}" aria-label="delete this IP">delete</button></span>` : '';
@@ -4643,7 +4772,7 @@ function render(){
     document.querySelectorAll('.person-hide-btn').forEach(btn=>{
       btn.addEventListener('click', (e)=>{
         e.stopPropagation();
-        promptTogglePersonHidden(btn.dataset.uname);
+        promptHideForViewers(btn.dataset.uname);
       });
     });
   }
