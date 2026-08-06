@@ -645,6 +645,7 @@
 
   .ip{color:var(--phosphor);letter-spacing:.02em;font-variant-numeric:tabular-nums;}
   .last-seen{color:var(--dim);font-size:11px;white-space:nowrap;text-transform:uppercase;letter-spacing:.08em;}
+  .isp-col{color:var(--phosphor-mute);font-size:11.5px;}
 
   .label-input{
     width:100%;
@@ -1435,7 +1436,6 @@
     .count b{font-size:22px;}
     .count::before{font-size:9px;}
     #dropzone, #exportBtn{display:none !important;}
-    .main-table .isp-info, .unlabeled-table .isp-info, .fav-table .isp-info{display:none !important;}
     .toolbar{gap:10px;}
     .search{padding:13px 16px 13px 30px;font-size:13.5px;}
     .label-input{min-width:50px;font-size:12px;}
@@ -1490,15 +1490,17 @@
     .main-table .checkbox-col input[type=checkbox]{display:none;}
     .main-table .star-btn-col{display:inline-flex !important;}
     .main-table .star-btn-inline{display:none !important;}
-    /* main table columns: 1 checkbox | 2 PSN ID | 3 IP | 4 Location | 5 First Seen | 6 Last Seen
-       keep PSN ID / Latest IP / Last Seen, hide the rest */
+    /* main table columns: 1 checkbox | 2 PSN ID | 3 IP | 4 Location | 5 ISP | 6 First Seen | 7 Last Seen
+       keep PSN ID / Latest IP / Last Seen, hide the rest (ISP is desktop-only) */
     .main-table thead th:nth-child(4), .main-table tbody td:nth-child(4),
-    .main-table thead th:nth-child(5), .main-table tbody td:nth-child(5){display:none;}
-    /* unlabeled table columns: 1 checkbox | 2 Label | 3 IP | 4 Location | 5 Times Seen | 6 First Seen | 7 Last Seen
-       keep IP / Location / Last Seen, hide the rest */
+    .main-table thead th:nth-child(5), .main-table tbody td:nth-child(5),
+    .main-table thead th:nth-child(6), .main-table tbody td:nth-child(6){display:none;}
+    /* unlabeled table columns: 1 checkbox | 2 Label | 3 IP | 4 Location | 5 ISP | 6 Times Seen | 7 First Seen | 8 Last Seen
+       keep IP / Location / Last Seen, hide the rest (ISP is desktop-only) */
     .unlabeled-table thead th:nth-child(2), .unlabeled-table tbody td:nth-child(2),
     .unlabeled-table thead th:nth-child(5), .unlabeled-table tbody td:nth-child(5),
-    .unlabeled-table thead th:nth-child(6), .unlabeled-table tbody td:nth-child(6){display:none;}
+    .unlabeled-table thead th:nth-child(6), .unlabeled-table tbody td:nth-child(6),
+    .unlabeled-table thead th:nth-child(7), .unlabeled-table tbody td:nth-child(7){display:none;}
     /* history sub-rows and inline action groups only ever appear on desktop
        now (mobile taps open a popup instead), but keep them harmless if any
        leftover state renders one anyway */
@@ -3889,9 +3891,10 @@ function render(){
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}>${starBtnCol}</td>
           <td><span class="caret">${(multi||admin)?'▸':''}</span>${displayName}${starBtnInline}${nameCopyBtn}${actionGroup}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden: personHidden, showActions:false, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
-          <td>${locationCell(u.latestLocation)}${ispInfo(u.latestIsp)}
+          <td>${locationCell(u.latestLocation)}
             ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
           </td>
+          <td class="isp-col">${u.latestIsp ? escapeHtml(u.latestIsp) : '—'}</td>
           <td class="last-seen">${formatLastSeen(u.firstAddedAt)}</td>
           <td class="last-seen">${formatLastSeen(u.latestAddedAt)}</td>
         </tr>`;
@@ -3902,7 +3905,8 @@ function render(){
               <td></td>
               <td></td>
               <td>${ipCell(h.ip, h.ids, {hidden: personHidden, showEye:false, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
-              <td>${locationCell(h.location)}${ispInfo(h.isp)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
+              <td>${locationCell(h.location)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
+              <td class="isp-col">${h.isp ? escapeHtml(h.isp) : '—'}</td>
               <td class="last-seen">${formatLastSeen(h.firstAddedAt)}</td>
               <td class="last-seen">${formatLastSeen(h.addedAt)}</td>
             </tr>`;
@@ -3930,7 +3934,8 @@ function render(){
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(gSelKey)}" ${rowChecked}>${starBtnCol}</td>
           <td><span class="caret">▸</span>${escapeHtml(face.username)}${starBtnInline}<span class="badge chip-btn chip-accent group-badge" data-group-key="${escapeHtml(groupKey)}">+${members.length-1} account${members.length-1>1?'s':''}</span></td>
           <td>${ipCell(latest.ip, [], {hidden: isPersonHidden(latest.username), showActions:false, sharedWith:sharedIpUsers(latest.ip, face.username)})}</td>
-          <td>${locationCell(latest.location)}${ispInfo(latest.isp)}</td>
+          <td>${locationCell(latest.location)}</td>
+          <td class="isp-col">${latest.isp ? escapeHtml(latest.isp) : '—'}</td>
           <td class="last-seen">${formatLastSeen(firstSeen)}</td>
           <td class="last-seen">${formatLastSeen(latest.addedAt)}</td>
         </tr>`;
@@ -3972,6 +3977,7 @@ function render(){
           ${th('username','PSN ID')}
           ${th('ip','Latest IP')}
           ${th('location','Latest Location')}
+          <th>ISP</th>
           ${th('firstSeen','First Seen')}
           ${th('lastSeen','Seen')}
         </tr></thead>
@@ -4070,7 +4076,7 @@ function render(){
         <table class="unlabeled-table">
           <thead><tr>
             <th class="checkbox-col"><input type="checkbox" id="selectAllUnlabeled" class="row-check" ${allUnlabeledChecked?'checked':''}></th>
-            <th>Label</th><th>IP Address</th><th>Location</th><th>Times Seen</th><th>First Seen</th><th>Seen</th>
+            <th>Label</th><th>IP Address</th><th>Location</th><th>ISP</th><th>Times Seen</th><th>First Seen</th><th>Seen</th>
           </tr></thead>
           <tbody>
             ${filteredUnlabeled.map(u=>{
@@ -4091,7 +4097,8 @@ function render(){
                 <td class="checkbox-col"><input type="checkbox" class="row-check unlabeled-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
                 <td>${labelCell}</td>
                 <td>${ipCell(u.ip, u.ids, {hidden: rowHidden, showActions:false, sharedWith:sharedIpUsers(u.ip, '')})}</td>
-                <td>${locationCell(u.location)}${ispInfo(u.isp)}</td>
+                <td>${locationCell(u.location)}</td>
+                <td class="isp-col">${u.isp ? escapeHtml(u.isp) : '—'}</td>
                 <td>${u.count}</td>
                 <td class="last-seen">${formatLastSeen(u.firstAddedAt)}</td>
                 <td class="last-seen">${formatLastSeen(u.addedAt)}</td>
