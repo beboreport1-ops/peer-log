@@ -2553,13 +2553,23 @@ function showImportReport({inserted, refreshed, autoMatched, skippedJunk, skippe
       <div class="group-ip-sub">${r.username ? escapeHtml(r.username) : 'no PSN ID'} · ${r.location ? escapeHtml(r.location) : 'no location'}</div>
     </div>`;
 
+  function splitGroup(label, rows){
+    if(!rows.length) return '';
+    const withPsn = rows.filter(r => r.username);
+    const noPsn = rows.filter(r => !r.username);
+    let html = `<div class="group-section-label">${label} (${rows.length})</div>`;
+    if(withPsn.length){
+      html += `<div class="group-section-sublabel">With PSN ID (${withPsn.length})</div>${withPsn.map(ipRow).join('')}`;
+    }
+    if(noPsn.length){
+      html += `<div class="group-section-sublabel">No PSN ID (${noPsn.length})</div>${noPsn.map(ipRow).join('')}`;
+    }
+    return html;
+  }
+
   const sections = [];
-  if(inserted.length){
-    sections.push(`<div class="group-section-label">New (${inserted.length})</div>${inserted.map(ipRow).join('')}`);
-  }
-  if(refreshed.length){
-    sections.push(`<div class="group-section-label">Refreshed — Last Seen updated (${refreshed.length})</div>${refreshed.map(ipRow).join('')}`);
-  }
+  sections.push(splitGroup('New', inserted));
+  sections.push(splitGroup('Refreshed — Last Seen updated', refreshed));
   const tallyBits = [];
   if(autoMatched) tallyBits.push(`${autoMatched} auto-matched to an existing PSN ID`);
   if(skippedCity) tallyBits.push(`${skippedCity} skipped (excluded city)`);
@@ -2567,7 +2577,7 @@ function showImportReport({inserted, refreshed, autoMatched, skippedJunk, skippe
   if(tallyBits.length){
     sections.push(`<div class="group-section-label">Also</div><div class="group-ip-sub" style="padding:4px 2px;">${tallyBits.join(' · ')}</div>`);
   }
-  if(!sections.length){
+  if(!sections.join('')){
     sections.push(`<div class="group-ip-empty">Nothing changed</div>`);
   }
 
