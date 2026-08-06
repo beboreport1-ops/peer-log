@@ -2566,6 +2566,67 @@ function updateWatchButtonUI(){
   }
 }
 
+// ---- remember the chosen folder across visits (IndexedDB — handles can't
+// go in localStorage/sessionStorage) so the picker only ever shows up once ----
+const WATCH_DB_NAME = 'peerlog-watch';
+const WATCH_STORE_NAME = 'handles';
+const WATCH_HANDLE_KEY = 'watchDir';
+
+function openWatchDB(){
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(WATCH_DB_NAME, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore(WATCH_STORE_NAME); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveWatchHandle(handle){
+  try{
+    const db = await openWatchDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(WATCH_STORE_NAME, 'readwrite');
+      tx.objectStore(WATCH_STORE_NAME).put(handle, WATCH_HANDLE_KEY);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  }catch(e){
+    console.error('failed to save watch folder handle', e);
+  }
+}
+
+async function loadWatchHandle(){
+  try{
+    const db = await openWatchDB();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(WATCH_STORE_NAME, 'readonly');
+      const req = tx.objectStore(WATCH_STORE_NAME).get(WATCH_HANDLE_KEY);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  }catch(e){
+    console.error('failed to load watch folder handle', e);
+    return null;
+  }
+}
+
+// Records current file states without importing anything — used right after
+// starting a watch so only CHANGES from this point on get imported, not
+// whatever was already sitting in the folder.
+async function establishWatchBaseline(){
+  if(!watchDirHandle) return;
+  try{
+    for await (const [name, handle] of watchDirHandle.entries()){
+      if(handle.kind !== 'file') continue;
+      if(!name.toLowerCase().endsWith('.csv')) continue;
+      const file = await handle.getFile();
+      watchFileMTimes.set(name, file.lastModified);
+    }
+  }catch(e){
+    console.error('failed to establish watch baseline', e);
+  }
+}
+
 async function checkWatchedFolder(){
   if(!watchDirHandle || !isAdmin()) return;
   try{
@@ -2595,17 +2656,29 @@ async function startFolderWatch(){
     showToast("folder watching isn't supported in this browser — use Chrome or Edge", true);
     return;
   }
-  let handle;
-  try{
-    handle = await window.showDirectoryPicker();
-  }catch(e){
-    return; // user cancelled the picker
+  let handle = await loadWatchHandle();
+  if(handle){
+    try{
+      let perm = await handle.queryPermission({mode:'read'});
+      if(perm !== 'granted') perm = await handle.requestPermission({mode:'read'});
+      if(perm !== 'granted') handle = null;
+    }catch(e){
+      handle = null;
+    }
+  }
+  if(!handle){
+    try{
+      handle = await window.showDirectoryPicker();
+    }catch(e){
+      return; // user cancelled the picker
+    }
+    await saveWatchHandle(handle);
   }
   watchDirHandle = handle;
   watchFileMTimes = new Map();
   updateWatchButtonUI();
-  showToast(`watching "${handle.name}" for new CSVs`);
-  await checkWatchedFolder();
+  showToast(`watching "${handle.name}" — will import on the next change`);
+  await establishWatchBaseline();
   watchIntervalId = setInterval(checkWatchedFolder, 20000);
 }
 
