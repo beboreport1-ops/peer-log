@@ -3165,19 +3165,21 @@ function openPlayerModal(username){
     : '';
   const hideBtn = personHideBtn(u.username);
 
-  const historyRows = u.history.map((h, i) => {
+  const historyRow = (h, tag) => {
     const hVal = h.ip ? (personHidden ? maskIp(h.ip) : h.ip) : '';
     return `
     <div class="group-ip-row">
       <div class="group-ip-main">
         <span class="ip">${hVal ? escapeHtml(hVal) : '—'}</span>
         ${h.ip?`<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(hVal)}" title="copy IP">⧉</button>`:''}
-        ${i===0?'<span class="hist-tag">latest</span>':''}
+        ${tag?`<span class="hist-tag">${tag}</span>`:''}
       </div>
       <div class="group-ip-sub">${locationCell(h.location)}${ispInfo(h.isp)} · first seen ${formatLastSeen(h.firstAddedAt)} · last seen ${formatLastSeen(h.addedAt)}</div>
       ${(admin && h.ip)?`<div class="group-ip-actions">${ipDelBtn(h.ip, h.ids)}</div>`:''}
     </div>`;
-  }).join('');
+  };
+  const latestEntry = u.history[0];
+  const restEntries = u.history.slice(1);
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -3194,8 +3196,13 @@ function openPlayerModal(username){
             ${editBtn}${addIpBtn}${addPsnLinkBtn}${hideBtn}
           </div>
         </div>
-        <div class="group-section-sublabel">IP History</div>
-        ${historyRows || '<div class="group-ip-empty">—</div>'}
+        <div class="group-section-sublabel">Latest IP</div>
+        ${latestEntry ? historyRow(latestEntry, 'latest') : '<div class="group-ip-empty">—</div>'}
+        ${restEntries.length ? `
+          <div class="group-section-sublabel">IP History</div>
+          <button class="chip-btn chip-ghost" id="playerShowHistoryBtn">Show More (${restEntries.length})</button>
+          <div id="playerIpHistoryList" style="display:none;">${restEntries.map(h=>historyRow(h)).join('')}</div>
+        ` : ''}
       </div>
       <div class="modal-actions">
         <button class="btn primary" id="playerModalCloseBtn">Close</button>
@@ -3206,6 +3213,17 @@ function openPlayerModal(username){
   function close(){ overlay.remove(); }
   overlay.addEventListener('click', e => { if(e.target===overlay) close(); });
   overlay.querySelector('#playerModalCloseBtn').addEventListener('click', close);
+
+  const showHistoryBtn = overlay.querySelector('#playerShowHistoryBtn');
+  const historyList = overlay.querySelector('#playerIpHistoryList');
+  if(showHistoryBtn && historyList){
+    showHistoryBtn.addEventListener('click', ()=>{
+      const isHidden = historyList.style.display === 'none';
+      historyList.style.display = isHidden ? 'flex' : 'none';
+      historyList.style.flexDirection = 'column';
+      showHistoryBtn.textContent = isHidden ? `Hide (${restEntries.length})` : `Show More (${restEntries.length})`;
+    });
+  }
 
   overlay.querySelectorAll('.copy-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> copyToClipboard(btn.dataset.copy, btn));
@@ -3772,13 +3790,30 @@ function render(){
   renderFavoritesTable();
 
   let list = users.filter(u => matchesQuery(u, q));
+
+  // A linked group should sort by whichever member is shown as its "face"
+  // (what's actually displayed), not by whichever member's own username
+  // happens to be compared — otherwise groups land in the wrong A-Z spot.
+  const byUsernameLowerForSort = new Map(users.map(x=>[x.username.toLowerCase(), x]));
+  const faceNameCache = new Map(); // groupKey -> face username (lowercase)
+  function sortNameFor(u){
+    const gk = groupKeyOf(u.username);
+    if(!gk) return u.username.toLowerCase();
+    if(faceNameCache.has(gk)) return faceNameCache.get(gk);
+    const memberKeys = membersOfGroupKey(gk);
+    const members = memberKeys.map(k=>byUsernameLowerForSort.get(k)).filter(Boolean);
+    const name = (members.length >= 2 ? faceOfGroup(members).username : u.username).toLowerCase();
+    faceNameCache.set(gk, name);
+    return name;
+  }
+
   list.sort((a,b)=>{
     let va, vb;
     if(sortKey==='ip'){ va=a.latestIp.toLowerCase(); vb=b.latestIp.toLowerCase(); }
     else if(sortKey==='location'){ va=a.latestLocation.toLowerCase(); vb=b.latestLocation.toLowerCase(); }
     else if(sortKey==='lastSeen'){ va=a.latestAddedAt||''; vb=b.latestAddedAt||''; }
     else if(sortKey==='firstSeen'){ va=a.firstAddedAt||''; vb=b.firstAddedAt||''; }
-    else { va=a.username.toLowerCase(); vb=b.username.toLowerCase(); }
+    else { va=sortNameFor(a); vb=sortNameFor(b); }
     if(va<vb) return -1*sortDir;
     if(va>vb) return 1*sortDir;
     return 0;
