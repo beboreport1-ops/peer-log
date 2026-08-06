@@ -872,6 +872,14 @@
     font-weight:700;
     box-shadow:0 0 8px rgba(34,197,94,.4);
   }
+  .isp-info{
+    display:inline-block;
+    font-size:10.5px;
+    color:var(--phosphor-mute);
+    margin-left:8px;
+    padding-left:8px;
+    border-left:1px solid var(--line-2);
+  }
 
   /* ==== empty state ==== */
   .empty{
@@ -1427,6 +1435,7 @@
     .count b{font-size:22px;}
     .count::before{font-size:9px;}
     #dropzone, #exportBtn{display:none !important;}
+    .isp-info{display:none !important;}
     .toolbar{gap:10px;}
     .search{padding:13px 16px 13px 30px;font-size:13.5px;}
     .label-input{min-width:50px;font-size:12px;}
@@ -1683,7 +1692,7 @@ async function sbFetch(path, options={}){
   const text = await res.text();
   return text ? JSON.parse(text) : null;
 }
-const loadAllRows = () => sbFetch('peer_rows?select=id,username,ip,location,created_at&order=id.asc');
+const loadAllRows = () => sbFetch('peer_rows?select=id,username,ip,location,isp,created_at&order=id.asc');
 const insertRows = (rows) => sbFetch('peer_rows', {
   method:'POST',
   headers:{'Prefer':'return=minimal'},
@@ -1699,6 +1708,11 @@ const updateRowsLocation = (ids, location) => sbFetch(`peer_rows?id=in.(${ids.jo
   method:'PATCH',
   headers:{'Prefer':'return=minimal'},
   body: JSON.stringify({location})
+});
+const updateRowsLocationAndIsp = (ids, location, isp) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`, {
+  method:'PATCH',
+  headers:{'Prefer':'return=minimal'},
+  body: JSON.stringify({location, isp: isp || null})
 });
 const touchRowsTimestamp = (ids) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`, {
   method:'PATCH',
@@ -2308,7 +2322,7 @@ async function refreshFromCloud(){
   setSyncStatus('syncing', 'syncing...');
   try{
     const [data, labelData, ipHiddenData] = await Promise.all([loadAllRows(), loadLabels(), loadIpHidden()]);
-    rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', idx:r.id, addedAt:r.created_at||''}));
+    rawRows = (data||[]).map(r => ({username:r.username||'', ip:r.ip||'', location:r.location||'', isp:r.isp||'', idx:r.id, addedAt:r.created_at||''}));
     labels = new Map((labelData||[]).map(l => [l.username_key, {label:l.label||'', hidden:!!l.hidden, groupKey:l.group_key||'', groupPrimary:!!l.group_primary, favorite:!!l.favorite}]));
     ipHidden = new Map((ipHiddenData||[]).map(r => [r.ip, !!r.hidden]));
     buildGroups();
@@ -2406,35 +2420,47 @@ function knownUsernameForIp(ip){
 }
 
 // ---------- IP geolocation (replaces CSV/manual location with a live lookup) ----------
-const geoCache = new Map(); // ip -> "City, Country" (or '' if lookup failed/unavailable)
+const geoCache = new Map(); // ip -> {location, isp} (empty strings if lookup failed/unavailable)
 
-async function fetchGeoLocation(ip){
-  if(!ip) return '';
+async function fetchGeoInfo(ip){
+  if(!ip) return {location:'', isp:''};
   try{
     const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`);
-    if(!res.ok) return '';
+    if(!res.ok) return {location:'', isp:''};
     const data = await res.json();
-    if(!data || data.success === false) return '';
+    if(!data || data.success === false) return {location:'', isp:''};
     const city = data.city || '';
     const country = data.country || '';
-    return (city && country) ? `${city}, ${country}` : (city || country || '');
+    const location = (city && country) ? `${city}, ${country}` : (city || country || '');
+    const isp = (data.connection && (data.connection.isp || data.connection.org)) || '';
+    return {location, isp};
   }catch(e){
     console.error('geo lookup failed for', ip, e);
-    return '';
+    return {location:'', isp:''};
   }
 }
 
-async function resolveGeoLocation(ip){
-  if(!ip) return '';
+async function resolveGeoInfo(ip){
+  if(!ip) return {location:'', isp:''};
   if(geoCache.has(ip)) return geoCache.get(ip);
-  const loc = await fetchGeoLocation(ip);
-  geoCache.set(ip, loc);
-  return loc;
+  const info = await fetchGeoInfo(ip);
+  geoCache.set(ip, info);
+  return info;
+}
+
+async function resolveGeoLocation(ip){
+  const info = await resolveGeoInfo(ip);
+  return info.location;
+}
+
+function getIspForIp(ip){
+  const c = geoCache.get(ip);
+  return c ? c.isp : '';
 }
 
 async function resolveGeoLocationsForIps(ips){
   const unique = [...new Set(ips.filter(Boolean))];
-  await Promise.all(unique.map(ip => resolveGeoLocation(ip)));
+  await Promise.all(unique.map(ip => resolveGeoInfo(ip)));
 }
 
 async function recheckAllLocations(){
@@ -2455,11 +2481,11 @@ async function recheckAllLocations(){
 
       let updated = 0, failed = 0;
       await Promise.all(uniqueIps.map(async ip => {
-        const loc = geoCache.get(ip);
-        if(!loc){ failed++; return; }
+        const info = geoCache.get(ip);
+        if(!info || !info.location){ failed++; return; }
         const ids = rawRows.filter(r => r.ip === ip).map(r => r.idx);
         try{
-          await updateRowsLocation(ids, loc);
+          await updateRowsLocationAndIsp(ids, info.location, info.isp);
           updated++;
         }catch(e){
           console.error('failed to update location for', ip, e);
@@ -2502,7 +2528,7 @@ async function handleFiles(files){
   await resolveGeoLocationsForIps(parsedRows.map(r => r.ip));
   parsedRows = parsedRows.map(r => {
     const geo = geoCache.get(r.ip);
-    return {...r, location: geo || r.location};
+    return {...r, location: (geo && geo.location) || r.location, isp: (geo && geo.isp) || ''};
   });
   setSyncStatus('syncing', 'syncing...');
 
@@ -2618,9 +2644,9 @@ async function openAddRowManual(){
       const username = (vals.username||'').trim();
       const ip = (vals.ip||'').trim();
       if(!username && !ip) return {ok:false, message:'Fill in at least one field'};
-      const location = ip ? await resolveGeoLocation(ip) : '';
+      const info = ip ? await resolveGeoInfo(ip) : {location:'', isp:''};
       const pending = getPendingRows();
-      pending.push({username, ip, location});
+      pending.push({username, ip, location:info.location, isp:info.isp});
       setPendingRows(pending);
       showToast('queued 1 row');
       await flushPendingUploads();
@@ -2660,9 +2686,9 @@ async function promptAddIpToUser(username){
       const ip = (vals.ip||'').trim();
       if(!ip) return {ok:false, message:'Enter an IP address'};
       try{
-        const location = await resolveGeoLocation(ip);
+        const info = await resolveGeoInfo(ip);
         const pending = getPendingRows();
-        pending.push({username, ip, location});
+        pending.push({username, ip, location:info.location, isp:info.isp});
         setPendingRows(pending);
         await flushPendingUploads();
         await refreshFromCloud();
@@ -2694,20 +2720,22 @@ function buildGroups(){
       const existing = g.ipMap.get(r.ip);
       if(existing){
         existing.location = r.location;
+        existing.isp = r.isp || existing.isp;
         existing.idx = r.idx;
         if(!existing.addedAt || new Date(r.addedAt) > new Date(existing.addedAt)) existing.addedAt = r.addedAt;
         if(!existing.firstAddedAt || new Date(r.addedAt) < new Date(existing.firstAddedAt)) existing.firstAddedAt = r.addedAt;
         existing.ids.push(r.idx);
       } else {
-        g.ipMap.set(r.ip, {location:r.location, idx:r.idx, addedAt:r.addedAt, firstAddedAt:r.addedAt, ids:[r.idx]});
+        g.ipMap.set(r.ip, {location:r.location, isp:r.isp||'', idx:r.idx, addedAt:r.addedAt, firstAddedAt:r.addedAt, ids:[r.idx]});
       }
     } else if(r.ip || r.location){
       const key = r.ip + '|' + r.location;
-      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, count:0, lastIdx:r.idx, addedAt:'', firstAddedAt:'', ids:[], labelKey:'unlabeled::'+key});
+      if(!unlabeledMap.has(key)) unlabeledMap.set(key, {ip:r.ip, location:r.location, isp:r.isp||'', count:0, lastIdx:r.idx, addedAt:'', firstAddedAt:'', ids:[], labelKey:'unlabeled::'+key});
       const u = unlabeledMap.get(key);
       u.count++;
       u.ids.push(r.idx);
       u.lastIdx = Math.max(u.lastIdx, r.idx);
+      if(r.isp) u.isp = r.isp;
       if(r.addedAt){
         if(!u.firstAddedAt || new Date(r.addedAt) < new Date(u.firstAddedAt)) u.firstAddedAt = r.addedAt;
         if(!u.addedAt || new Date(r.addedAt) > new Date(u.addedAt)) u.addedAt = r.addedAt;
@@ -2716,12 +2744,13 @@ function buildGroups(){
   });
 
   users = [...map.values()].map(g => {
-    const history = [...g.ipMap.entries()].map(([ip, v]) => ({ip, location:v.location, idx:v.idx, addedAt:v.addedAt, firstAddedAt:v.firstAddedAt, ids:v.ids}));
+    const history = [...g.ipMap.entries()].map(([ip, v]) => ({ip, location:v.location, isp:v.isp||'', idx:v.idx, addedAt:v.addedAt, firstAddedAt:v.firstAddedAt, ids:v.ids}));
     history.sort((a,b) => b.idx - a.idx);
     return {
       username: g.username,
       latestIp: history[0].ip,
       latestLocation: history[0].location,
+      latestIsp: history[0].isp,
       latestAddedAt: g.latestAddedAt,
       firstAddedAt: history[0].firstAddedAt,
       history
@@ -3037,7 +3066,7 @@ function groupLatestRecord(members){
   members.forEach(m => {
     m.history.forEach(h => {
       if(!best || new Date(h.addedAt||0) > new Date(best.addedAt||0)){
-        best = {ip:h.ip, location:h.location, addedAt:h.addedAt, firstAddedAt:h.firstAddedAt, ids:h.ids, username:m.username};
+        best = {ip:h.ip, location:h.location, isp:h.isp||'', addedAt:h.addedAt, firstAddedAt:h.firstAddedAt, ids:h.ids, username:m.username};
       }
     });
   });
@@ -3072,7 +3101,7 @@ function openUnlabeledModal(labelKey){
             <span class="ip">${u.ip ? escapeHtml(rowHidden ? maskIp(u.ip) : u.ip) : '—'}</span>
             ${copyBtn}
           </div>
-          <div class="group-ip-sub">${locationCell(u.location)} · first seen ${formatLastSeen(u.firstAddedAt)} · last seen ${formatLastSeen(u.addedAt)} · seen ${u.count}×</div>
+          <div class="group-ip-sub">${locationCell(u.location)}${ispInfo(u.isp)} · first seen ${formatLastSeen(u.firstAddedAt)} · last seen ${formatLastSeen(u.addedAt)} · seen ${u.count}×</div>
         </div>
         <div class="group-psn-actions-line" style="margin-top:14px;">
           ${addPsnBtn}${hideBtn}${delBtn}
@@ -3145,7 +3174,7 @@ function openPlayerModal(username){
         ${h.ip?`<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(hVal)}" title="copy IP">⧉</button>`:''}
         ${i===0?'<span class="hist-tag">latest</span>':''}
       </div>
-      <div class="group-ip-sub">${locationCell(h.location)} · first seen ${formatLastSeen(h.firstAddedAt)} · last seen ${formatLastSeen(h.addedAt)}</div>
+      <div class="group-ip-sub">${locationCell(h.location)}${ispInfo(h.isp)} · first seen ${formatLastSeen(h.firstAddedAt)} · last seen ${formatLastSeen(h.addedAt)}</div>
       ${(admin && h.ip)?`<div class="group-ip-actions">${ipDelBtn(h.ip, h.ids)}</div>`:''}
     </div>`;
   }).join('');
@@ -3283,7 +3312,7 @@ function openGroupModal(groupKey){
         ${h.ip?`<button class="icon-btn copy-btn chip-btn chip-icon" data-copy="${escapeHtml(hVal)}" title="copy IP">⧉</button>`:''}
         ${tag?`<span class="hist-tag">${tag}</span>`:''}
       </div>
-      <div class="group-ip-sub">${locationCell(h.location)} · ${formatLastSeen(h.addedAt)} · <span class="group-ip-owner">${escapeHtml(h.username)}</span></div>
+      <div class="group-ip-sub">${locationCell(h.location)}${ispInfo(h.isp)} · ${formatLastSeen(h.addedAt)} · <span class="group-ip-owner">${escapeHtml(h.username)}</span></div>
       ${(admin && h.ip)?`<div class="group-ip-actions">${ipDelBtn(h.ip, h.ids)}</div>`:''}
     </div>`;
   };
@@ -3578,6 +3607,12 @@ function locationCell(location){
   return flag ? `${flag} ${escapeHtml(location)}` : escapeHtml(location);
 }
 
+// Desktop-only ISP badge — hidden on mobile via CSS (.isp-info)
+function ispInfo(isp){
+  if(!isp) return '';
+  return `<span class="isp-info" title="Internet Service Provider">ISP: ${escapeHtml(isp)}</span>`;
+}
+
 async function saveLabel(key, value){
   const current = labels.get(key) || {label:'', hidden:false, groupKey:'', groupPrimary:false, favorite:false};
   labels.set(key, {label:value, hidden:current.hidden, groupKey:current.groupKey, groupPrimary:current.groupPrimary, favorite:current.favorite});
@@ -3801,7 +3836,7 @@ function render(){
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}>${starBtnCol}</td>
           <td><span class="caret">${(multi||admin)?'▸':''}</span>${displayName}${starBtnInline}${nameCopyBtn}${actionGroup}</td>
           <td>${ipCell(u.latestIp, u.history[0].ids, {hidden: personHidden, showActions:false, sharedWith:sharedIpUsers(u.latestIp, u.username)})}</td>
-          <td>${locationCell(u.latestLocation)}
+          <td>${locationCell(u.latestLocation)}${ispInfo(u.latestIsp)}
             ${multi?`<span class="badge chip-btn chip-accent" data-key="${escapeHtml(key)}">+${u.history.length-1} more</span>`:''}
           </td>
           <td class="last-seen">${formatLastSeen(u.firstAddedAt)}</td>
@@ -3814,7 +3849,7 @@ function render(){
               <td></td>
               <td></td>
               <td>${ipCell(h.ip, h.ids, {hidden: personHidden, showEye:false, sharedWith:sharedIpUsers(h.ip, u.username)})}</td>
-              <td>${locationCell(h.location)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
+              <td>${locationCell(h.location)}${ispInfo(h.isp)}${i===0?'<span class="hist-tag">latest</span>':''}</td>
               <td class="last-seen">${formatLastSeen(h.firstAddedAt)}</td>
               <td class="last-seen">${formatLastSeen(h.addedAt)}</td>
             </tr>`;
@@ -3842,7 +3877,7 @@ function render(){
           <td class="checkbox-col"><input type="checkbox" class="row-check" data-sel-key="${escapeHtml(gSelKey)}" ${rowChecked}>${starBtnCol}</td>
           <td><span class="caret">▸</span>${escapeHtml(face.username)}${starBtnInline}<span class="badge chip-btn chip-accent group-badge" data-group-key="${escapeHtml(groupKey)}">+${members.length-1} account${members.length-1>1?'s':''}</span></td>
           <td>${ipCell(latest.ip, [], {hidden: isPersonHidden(latest.username), showActions:false, sharedWith:sharedIpUsers(latest.ip, face.username)})}</td>
-          <td>${locationCell(latest.location)}</td>
+          <td>${locationCell(latest.location)}${ispInfo(latest.isp)}</td>
           <td class="last-seen">${formatLastSeen(firstSeen)}</td>
           <td class="last-seen">${formatLastSeen(latest.addedAt)}</td>
         </tr>`;
@@ -4003,7 +4038,7 @@ function render(){
                 <td class="checkbox-col"><input type="checkbox" class="row-check unlabeled-check" data-sel-key="${escapeHtml(uSelKey)}" ${rowChecked}></td>
                 <td>${labelCell}</td>
                 <td>${ipCell(u.ip, u.ids, {hidden: rowHidden, showActions:false, sharedWith:sharedIpUsers(u.ip, '')})}</td>
-                <td>${locationCell(u.location)}</td>
+                <td>${locationCell(u.location)}${ispInfo(u.isp)}</td>
                 <td>${u.count}</td>
                 <td class="last-seen">${formatLastSeen(u.firstAddedAt)}</td>
                 <td class="last-seen">${formatLastSeen(u.addedAt)}</td>
