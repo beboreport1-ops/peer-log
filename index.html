@@ -2192,17 +2192,21 @@ async function openManageViewerIds(){
 }
 
 function renderManageViewerIdsModal(viewers){
-  const rows = viewers.map(v => `
+  const rows = viewers.map(v => {
+    const hiddenCount = hiddenPlayerCountForViewer(v.viewer_id);
+    return `
     <div class="group-psn-row">
       <div class="group-psn-name-line">
         <span class="group-member-name">${escapeHtml(v.viewer_id)}</span>
       </div>
       <div class="group-ip-sub">${v.last_seen ? `last online ${formatViewerLastSeen(v.last_seen)}` : 'never logged in'}</div>
       <div class="group-psn-actions-line">
+        <button class="icon-btn show-hidden-players-btn chip-btn ${hiddenCount>0?'chip-warn':'chip-ghost'}" data-id="${escapeHtml(v.viewer_id)}">Hidden Players${hiddenCount>0?` (${hiddenCount})`:''}</button>
         <button class="icon-btn rename-viewer-btn chip-btn chip-ghost" data-id="${escapeHtml(v.viewer_id)}">Rename</button>
         <button class="icon-btn delete-viewer-btn chip-btn chip-danger" data-id="${escapeHtml(v.viewer_id)}">Delete</button>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
@@ -2226,6 +2230,12 @@ function renderManageViewerIdsModal(viewers){
     close();
     await promptAddViewerId();
     openManageViewerIds();
+  });
+  overlay.querySelectorAll('.show-hidden-players-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      close();
+      openHiddenPlayersForViewer(btn.dataset.id);
+    });
   });
   overlay.querySelectorAll('.rename-viewer-btn').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
@@ -2264,13 +2274,15 @@ async function promptAddViewerId(){
 
 async function promptDeleteViewerId(id){
   await confirmModal({
-    title: `Delete viewer ID "${id}"? Their favorites will be removed too.`,
+    title: `Delete viewer ID "${id}"? Their favorites and hidden-player settings will be removed too.`,
     submitLabel: 'Delete',
     danger: true,
     onConfirm: async () => {
       try{
         await sbFetch(`peer_favorites?viewer_id=eq.${encodeURIComponent(id)}`, {method:'DELETE'});
+        await sbFetch(`peer_hidden_for_viewer?viewer_id=eq.${encodeURIComponent(id)}`, {method:'DELETE'});
         await sbFetch(`peer_viewers?viewer_id=eq.${encodeURIComponent(id)}`, {method:'DELETE'});
+        await loadHiddenForViewerData();
         showToast(`deleted viewer ID "${id}"`);
       }catch(e){
         showToast('delete failed — check connection', true);
@@ -2300,8 +2312,18 @@ async function promptRenameViewerId(oldId){
             body: JSON.stringify(favRows.map(r=>({viewer_id:newId, username_key:r.username_key})))
           });
         }
+        const hiddenRows = await sbFetch(`peer_hidden_for_viewer?select=username_key&viewer_id=eq.${encodeURIComponent(oldId)}`);
+        if(hiddenRows && hiddenRows.length){
+          await sbFetch('peer_hidden_for_viewer?on_conflict=viewer_id,username_key', {
+            method:'POST',
+            headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+            body: JSON.stringify(hiddenRows.map(r=>({viewer_id:newId, username_key:r.username_key})))
+          });
+        }
         await sbFetch(`peer_favorites?viewer_id=eq.${encodeURIComponent(oldId)}`, {method:'DELETE'});
+        await sbFetch(`peer_hidden_for_viewer?viewer_id=eq.${encodeURIComponent(oldId)}`, {method:'DELETE'});
         await sbFetch(`peer_viewers?viewer_id=eq.${encodeURIComponent(oldId)}`, {method:'DELETE'});
+        await loadHiddenForViewerData();
         showToast(`renamed to "${newId}"`);
         return {ok:true};
       }catch(e){
@@ -2350,6 +2372,72 @@ function isPersonHidden(username){
 function hiddenViewerCountFor(username){
   const set = hiddenForViewerMap.get((username||'').toLowerCase());
   return set ? set.size : 0;
+}
+
+function hiddenPlayerCountForViewer(vid){
+  let count = 0;
+  hiddenForViewerMap.forEach(set => { if(set.has(vid)) count++; });
+  return count;
+}
+
+async function openHiddenPlayersForViewer(vid){
+  if(!isAdmin()) return;
+  const names = [...users.map(u => u.username)].sort((a,b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const rows = names.map(name => {
+    const key = name.toLowerCase();
+    const checked = (hiddenForViewerMap.get(key) || new Set()).has(vid);
+    return `
+      <label class="hide-viewer-row">
+        <input type="checkbox" class="hidden-player-check" data-uname="${escapeHtml(name)}" ${checked?'checked':''}>
+        <span>${escapeHtml(name)}</span>
+      </label>`;
+  }).join('');
+  overlay.innerHTML = `
+    <div class="modal-box group-modal-box">
+      <h3>Hidden players for "${escapeHtml(vid)}"</h3>
+      <div class="modal-fields group-modal-scroll">
+        <p class="hide-viewer-hint">Check a player to hide their real IP from this viewer specifically.</p>
+        ${rows || '<div class="group-ip-empty">No players yet</div>'}
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="hiddenPlayersCancelBtn">Cancel</button>
+        <button class="btn primary" id="hiddenPlayersSaveBtn">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  function close(){ overlay.remove(); }
+  overlay.querySelector('#hiddenPlayersCancelBtn').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if(e.target===overlay) close(); });
+  overlay.querySelector('#hiddenPlayersSaveBtn').addEventListener('click', async () => {
+    const checks = [...overlay.querySelectorAll('.hidden-player-check')];
+    const checkedKeys = checks.filter(c=>c.checked).map(c=>c.dataset.uname.toLowerCase());
+    const uncheckedKeys = checks.filter(c=>!c.checked).map(c=>c.dataset.uname.toLowerCase());
+    try{
+      const inserts = checkedKeys.map(key => ({viewer_id:vid, username_key:key}));
+      if(inserts.length){
+        await sbFetch('peer_hidden_for_viewer?on_conflict=viewer_id,username_key', {
+          method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+          body: JSON.stringify(inserts)
+        });
+      }
+      await Promise.all(uncheckedKeys.map(key =>
+        sbFetch(`peer_hidden_for_viewer?viewer_id=eq.${encodeURIComponent(vid)}&username_key=eq.${encodeURIComponent(key)}`, {method:'DELETE'})
+      ));
+      await loadHiddenForViewerData();
+      render();
+      showToast('updated hidden players');
+    }catch(e){
+      console.error(e);
+      showToast('failed to save — check connection', true);
+    }
+    close();
+    openManageViewerIds();
+  });
 }
 
 async function promptHideForViewers(usernames){
