@@ -2157,7 +2157,7 @@ function renderManageViewerIdsModal(viewers){
       <div class="group-psn-name-line">
         <span class="group-member-name">${escapeHtml(v.viewer_id)}</span>
       </div>
-      <div class="group-ip-sub">${v.last_seen ? `last online ${formatLastSeen(v.last_seen)}` : 'never logged in'}</div>
+      <div class="group-ip-sub">${v.last_seen ? `last online ${formatViewerLastSeen(v.last_seen)}` : 'never logged in'}</div>
       <div class="group-psn-actions-line">
         <button class="icon-btn rename-viewer-btn chip-btn chip-ghost" data-id="${escapeHtml(v.viewer_id)}">Rename</button>
         <button class="icon-btn delete-viewer-btn chip-btn chip-danger" data-id="${escapeHtml(v.viewer_id)}">Delete</button>
@@ -3982,6 +3982,29 @@ function formatLastSeen(iso){
   const full = d.toLocaleString('en-US', {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'});
   return `<span title="${escapeHtml(full)}">${escapeHtml(text)}</span>`;
 }
+
+// Viewer "last online" — clock time (Saudi Arabia, Asia/Riyadh) for today and
+// yesterday, since that's precise and still easy to read; anything older
+// just says "N days ago" like everywhere else in the app.
+function formatViewerLastSeen(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '—';
+  const tz = 'Asia/Riyadh';
+  const now = new Date();
+  const dayFmt = new Intl.DateTimeFormat('en-CA', {timeZone:tz, year:'numeric', month:'2-digit', day:'2-digit'});
+  const todayDate = new Date(dayFmt.format(now) + 'T00:00:00Z');
+  const dDate = new Date(dayFmt.format(d) + 'T00:00:00Z');
+  const diffDays = Math.round((todayDate - dDate) / 86400000);
+  const timeStr = new Intl.DateTimeFormat('en-US', {timeZone:tz, hour:'numeric', minute:'2-digit', hour12:true}).format(d).toLowerCase().replace(' ', '');
+  let text;
+  if(diffDays <= 0) text = timeStr;
+  else if(diffDays === 1) text = `yesterday, ${timeStr}`;
+  else text = `${diffDays} days ago`;
+  const full = d.toLocaleString('en-US', {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit', timeZone:tz}) + ' (Saudi Arabia time)';
+  return `<span title="${escapeHtml(full)}">${escapeHtml(text)}</span>`;
+}
+
 function maskIp(ip){
   if(!ip) return ip;
   const parts = ip.split('.');
