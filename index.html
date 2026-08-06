@@ -1558,6 +1558,7 @@
     <input class="search" id="search" placeholder="filter by PSN ID...">
     <button class="btn primary" id="exportBtn">Export filtered CSV</button>
     <button class="btn" id="addRowBtn" style="display:none;">+ Add row manually</button>
+    <button class="btn" id="watchFolderBtn" style="display:none;">▶ Watch Folder</button>
     <button class="btn" id="manageViewersBtn" style="display:none;">Manage Viewer IDs</button>
     <button class="btn" id="recheckLocationsBtn" style="display:none;">Re-check All Locations</button>
   </div>
@@ -1609,6 +1610,7 @@ const appEl = document.getElementById('app');
 const gateScreenEl = document.getElementById('gateScreen');
 const dropzone = document.getElementById('dropzone');
 const addRowBtn = document.getElementById('addRowBtn');
+const watchFolderBtn = document.getElementById('watchFolderBtn');
 const fileInput = document.getElementById('fileInput');
 const toolbar = document.getElementById('toolbar');
 const search = document.getElementById('search');
@@ -1979,8 +1981,14 @@ function showGate(){
         return;
       }
       try{
-        const rows = await sbFetch(`peer_viewers?select=viewer_id&viewer_id=eq.${encodeURIComponent(entered)}`);
+        const rows = await sbFetch(`peer_viewers?select=viewer_id,expires_at&viewer_id=eq.${encodeURIComponent(entered)}`);
         if(rows && rows.length){
+          const row = rows[0];
+          if(row.expires_at && new Date(row.expires_at) < new Date()){
+            err.textContent = 'This ID has expired — ask an admin for a new one';
+            submit.disabled = false;
+            return;
+          }
           role = 'view';
           viewerId = entered;
           sessionStorage.setItem('peerlog_role', role);
@@ -2010,6 +2018,7 @@ async function showApp(){
   roleTag.className = 'role-tag' + (isAdmin() ? ' admin' : '');
   dropzone.style.display = isAdmin() ? 'block' : 'none';
   addRowBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+  watchFolderBtn.style.display = (isAdmin() && isFileSystemAccessSupported()) ? 'inline-block' : 'none';
   manageViewersBtn.style.display = isAdmin() ? 'inline-block' : 'none';
   recheckLocationsBtn.style.display = isAdmin() ? 'inline-block' : 'none';
 
@@ -2536,6 +2545,85 @@ async function recheckAllLocations(){
     }
   });
 }
+
+// ---------- auto-watch a local folder for new/updated CSV exports ----------
+let watchDirHandle = null;
+let watchIntervalId = null;
+let watchFileMTimes = new Map(); // filename -> last-processed lastModified timestamp
+
+function isFileSystemAccessSupported(){
+  return typeof window.showDirectoryPicker === 'function';
+}
+
+function updateWatchButtonUI(){
+  if(!watchFolderBtn) return;
+  if(watchDirHandle){
+    watchFolderBtn.textContent = `⏹ Stop Watching (${watchDirHandle.name})`;
+    watchFolderBtn.classList.add('primary');
+  } else {
+    watchFolderBtn.textContent = '▶ Watch Folder';
+    watchFolderBtn.classList.remove('primary');
+  }
+}
+
+async function checkWatchedFolder(){
+  if(!watchDirHandle || !isAdmin()) return;
+  try{
+    const filesToImport = [];
+    for await (const [name, handle] of watchDirHandle.entries()){
+      if(handle.kind !== 'file') continue;
+      if(!name.toLowerCase().endsWith('.csv')) continue;
+      const file = await handle.getFile();
+      const prevMtime = watchFileMTimes.get(name);
+      if(prevMtime === undefined || file.lastModified > prevMtime){
+        watchFileMTimes.set(name, file.lastModified);
+        filesToImport.push(file);
+      }
+    }
+    if(filesToImport.length){
+      await handleFiles(filesToImport);
+    }
+  }catch(e){
+    console.error('folder watch check failed', e);
+    showToast('lost access to the watched folder — turn watching back on to reselect', true);
+    stopFolderWatch();
+  }
+}
+
+async function startFolderWatch(){
+  if(!isFileSystemAccessSupported()){
+    showToast("folder watching isn't supported in this browser — use Chrome or Edge", true);
+    return;
+  }
+  let handle;
+  try{
+    handle = await window.showDirectoryPicker();
+  }catch(e){
+    return; // user cancelled the picker
+  }
+  watchDirHandle = handle;
+  watchFileMTimes = new Map();
+  updateWatchButtonUI();
+  showToast(`watching "${handle.name}" for new CSVs`);
+  await checkWatchedFolder();
+  watchIntervalId = setInterval(checkWatchedFolder, 20000);
+}
+
+function stopFolderWatch(){
+  if(watchIntervalId){ clearInterval(watchIntervalId); watchIntervalId = null; }
+  watchDirHandle = null;
+  watchFileMTimes = new Map();
+  updateWatchButtonUI();
+}
+
+watchFolderBtn.addEventListener('click', () => {
+  if(watchDirHandle){
+    stopFolderWatch();
+    showToast('stopped watching folder');
+  } else {
+    startFolderWatch();
+  }
+});
 
 async function handleFiles(files){
   if(!isAdmin()) return;
