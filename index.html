@@ -2397,6 +2397,38 @@ function knownUsernameForIp(ip){
   return matches[0].username;
 }
 
+// ---------- IP geolocation (replaces CSV/manual location with a live lookup) ----------
+const geoCache = new Map(); // ip -> "City, Country" (or '' if lookup failed/unavailable)
+
+async function fetchGeoLocation(ip){
+  if(!ip) return '';
+  try{
+    const res = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`);
+    if(!res.ok) return '';
+    const data = await res.json();
+    if(!data || data.success === false) return '';
+    const city = data.city || '';
+    const country = data.country || '';
+    return (city && country) ? `${city}, ${country}` : (city || country || '');
+  }catch(e){
+    console.error('geo lookup failed for', ip, e);
+    return '';
+  }
+}
+
+async function resolveGeoLocation(ip){
+  if(!ip) return '';
+  if(geoCache.has(ip)) return geoCache.get(ip);
+  const loc = await fetchGeoLocation(ip);
+  geoCache.set(ip, loc);
+  return loc;
+}
+
+async function resolveGeoLocationsForIps(ips){
+  const unique = [...new Set(ips.filter(Boolean))];
+  await Promise.all(unique.map(ip => resolveGeoLocation(ip)));
+}
+
 async function handleFiles(files){
   if(!isAdmin()) return;
   setSyncStatus('syncing', 'reading file(s)...');
@@ -2404,7 +2436,7 @@ async function handleFiles(files){
   const skippedJunk = results.reduce((sum,r)=>sum+r.skippedJunk, 0);
   const skippedCity = results.reduce((sum,r)=>sum+r.skippedCity, 0);
   let autoMatched = 0;
-  const parsedRows = results.flatMap(r=>r.rows).map(r => {
+  let parsedRows = results.flatMap(r=>r.rows).map(r => {
     let username = r.username;
     if(!username && r.ip){
       const known = knownUsernameForIp(r.ip);
@@ -2418,6 +2450,17 @@ async function handleFiles(files){
     if(skippedJunk || skippedCity) await showImportReport({inserted:0, refreshed:0, autoMatched:0, skippedJunk, skippedCity});
     return;
   }
+
+  // Look up each IP's real location via a geolocation API instead of trusting
+  // whatever the CSV (or a manual entry) says — falls back to the CSV's own
+  // location only if the lookup fails (offline, rate-limited, private IP, etc).
+  setSyncStatus('syncing', 'looking up IP locations...');
+  await resolveGeoLocationsForIps(parsedRows.map(r => r.ip));
+  parsedRows = parsedRows.map(r => {
+    const geo = geoCache.get(r.ip);
+    return {...r, location: geo || r.location};
+  });
+  setSyncStatus('syncing', 'syncing...');
 
   // De-dupe against what's already in the database: exact same PSN ID + IP +
   // location just gets its Last Seen refreshed instead of adding a new row.
@@ -2494,15 +2537,14 @@ async function openAddRowManual(){
     title: 'Add row manually',
     fields: [
       {id:'username', label:'PSN ID (leave blank if unknown)'},
-      {id:'ip', label:'IP address'},
-      {id:'location', label:'Location (e.g. City, Country)'}
+      {id:'ip', label:'IP address (location is looked up automatically)'}
     ],
     submitLabel: 'Add row',
     onSubmit: async (vals) => {
       const username = (vals.username||'').trim();
       const ip = (vals.ip||'').trim();
-      const location = (vals.location||'').trim();
-      if(!username && !ip && !location) return {ok:false, message:'Fill in at least one field'};
+      if(!username && !ip) return {ok:false, message:'Fill in at least one field'};
+      const location = ip ? await resolveGeoLocation(ip) : '';
       const pending = getPendingRows();
       pending.push({username, ip, location});
       setPendingRows(pending);
@@ -2534,25 +2576,17 @@ function getKnownLocationsForUser(username){
 
 async function promptAddIpToUser(username){
   if(!isAdmin() || !username) return;
-  const knownLocations = getKnownLocationsForUser(username);
   await openModal({
     title: `Add IP for ${username}`,
     fields: [
-      {id:'ip', label:'IP address'},
-      {id:'location', label:'Location (pick a previous one)', type:'select', options:[
-        {value:'', label:'— type manually below instead —'},
-        ...knownLocations.map(l=>({value:l, label:l}))
-      ]},
-      {id:'manualLocation', label:'Or type manually (City, Country)'}
+      {id:'ip', label:'IP address (location is looked up automatically)'}
     ],
     submitLabel: 'Add IP',
     onSubmit: async (vals) => {
       const ip = (vals.ip||'').trim();
-      const manual = (vals.manualLocation||'').trim();
-      const picked = (vals.location||'').trim();
-      const location = manual || picked || '';
       if(!ip) return {ok:false, message:'Enter an IP address'};
       try{
+        const location = await resolveGeoLocation(ip);
         const pending = getPendingRows();
         pending.push({username, ip, location});
         setPendingRows(pending);
