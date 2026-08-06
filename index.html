@@ -1530,6 +1530,7 @@
     <button class="btn primary" id="exportBtn">Export filtered CSV</button>
     <button class="btn" id="addRowBtn" style="display:none;">+ Add row manually</button>
     <button class="btn" id="manageViewersBtn" style="display:none;">Manage Viewer IDs</button>
+    <button class="btn" id="recheckLocationsBtn" style="display:none;">Re-check All Locations</button>
   </div>
 
   <div class="bulk-bar" id="bulkBar" style="display:none;">
@@ -1588,6 +1589,7 @@ const unlabeledHolder = document.getElementById('unlabeledHolder');
 const countEl = document.getElementById('count');
 const exportBtn = document.getElementById('exportBtn');
 const manageViewersBtn = document.getElementById('manageViewersBtn');
+const recheckLocationsBtn = document.getElementById('recheckLocationsBtn');
 const bulkBar = document.getElementById('bulkBar');
 const bulkCount = document.getElementById('bulkCount');
 const bulkExportBtn = document.getElementById('bulkExportBtn');
@@ -1692,6 +1694,11 @@ const updateRowsUsername = (ids, username) => sbFetch(`peer_rows?id=in.(${ids.jo
   method:'PATCH',
   headers:{'Prefer':'return=minimal'},
   body: JSON.stringify({username})
+});
+const updateRowsLocation = (ids, location) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`, {
+  method:'PATCH',
+  headers:{'Prefer':'return=minimal'},
+  body: JSON.stringify({location})
 });
 const touchRowsTimestamp = (ids) => sbFetch(`peer_rows?id=in.(${ids.join(',')})`, {
   method:'PATCH',
@@ -1968,6 +1975,7 @@ async function showApp(){
   dropzone.style.display = isAdmin() ? 'block' : 'none';
   addRowBtn.style.display = isAdmin() ? 'inline-block' : 'none';
   manageViewersBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+  recheckLocationsBtn.style.display = isAdmin() ? 'inline-block' : 'none';
 
   await loadMyFavoritesData();
 
@@ -2429,6 +2437,42 @@ async function resolveGeoLocationsForIps(ips){
   await Promise.all(unique.map(ip => resolveGeoLocation(ip)));
 }
 
+async function recheckAllLocations(){
+  if(!isAdmin()) return;
+  const uniqueIps = [...new Set(rawRows.map(r => r.ip).filter(Boolean))];
+  if(!uniqueIps.length){
+    showToast('no IPs to re-check');
+    return;
+  }
+  await confirmModal({
+    title: `Re-check locations for ${uniqueIps.length} unique IP${uniqueIps.length>1?'s':''}? This uses your geolocation API quota and may take a moment.`,
+    submitLabel: 'Re-check',
+    danger: false,
+    onConfirm: async () => {
+      setSyncStatus('syncing', `looking up ${uniqueIps.length} IPs...`);
+      geoCache.clear(); // force fresh lookups instead of reusing anything cached this session
+      await resolveGeoLocationsForIps(uniqueIps);
+
+      let updated = 0, failed = 0;
+      await Promise.all(uniqueIps.map(async ip => {
+        const loc = geoCache.get(ip);
+        if(!loc){ failed++; return; }
+        const ids = rawRows.filter(r => r.ip === ip).map(r => r.idx);
+        try{
+          await updateRowsLocation(ids, loc);
+          updated++;
+        }catch(e){
+          console.error('failed to update location for', ip, e);
+          failed++;
+        }
+      }));
+
+      await refreshFromCloud();
+      showToast(`updated ${updated} IP${updated>1?'s':''}${failed?`, ${failed} failed`:''}`);
+    }
+  });
+}
+
 async function handleFiles(files){
   if(!isAdmin()) return;
   setSyncStatus('syncing', 'reading file(s)...');
@@ -2447,7 +2491,7 @@ async function handleFiles(files){
 
   if(!parsedRows.length){
     updateSyncIndicator();
-    if(skippedJunk || skippedCity) await showImportReport({inserted:0, refreshed:0, autoMatched:0, skippedJunk, skippedCity});
+    if(skippedJunk || skippedCity) await showImportReport({inserted:[], refreshed:[], autoMatched:0, skippedJunk, skippedCity});
     return;
   }
 
@@ -2472,10 +2516,12 @@ async function handleFiles(files){
 
   const toInsert = [];
   const touchIds = [];
+  const refreshedRows = [];
   parsedRows.forEach(r => {
     const key = `${(r.username||'').toLowerCase()}|${r.ip}|${r.location}`;
     if(existingByKey.has(key)){
       touchIds.push(existingByKey.get(key));
+      refreshedRows.push(r);
     } else {
       toInsert.push(r);
     }
@@ -2487,7 +2533,7 @@ async function handleFiles(files){
 
   if(!toInsert.length){
     await refreshFromCloud();
-    await showImportReport({inserted:0, refreshed:touchIds.length, autoMatched, skippedJunk, skippedCity});
+    await showImportReport({inserted:[], refreshed:refreshedRows, autoMatched, skippedJunk, skippedCity});
     return;
   }
 
@@ -2495,19 +2541,37 @@ async function handleFiles(files){
   pending.push(...toInsert);
   setPendingRows(pending);
   await flushPendingUploads();
-  await showImportReport({inserted:toInsert.length, refreshed:touchIds.length, autoMatched, skippedJunk, skippedCity});
+  await showImportReport({inserted:toInsert, refreshed:refreshedRows, autoMatched, skippedJunk, skippedCity});
 }
 
 function showImportReport({inserted, refreshed, autoMatched, skippedJunk, skippedCity}){
-  const row = (n, label) => `<li><span>${label}</span><b>${n}</b></li>`;
-  const body = `<ul class="import-report">
-    ${row(inserted, `new row${inserted===1?'':'s'} added`)}
-    ${row(refreshed, `existing row${refreshed===1?'':'s'} refreshed (Last Seen updated)`)}
-    ${row(autoMatched, `auto-matched to an existing PSN ID`)}
-    ${row(skippedCity, `skipped (excluded city)`)}
-    ${row(skippedJunk, `malformed row${skippedJunk===1?'':'s'} ignored`)}
-  </ul>`;
-  return showInfoModal({title:'Import complete', bodyHtml:body});
+  const ipRow = (r) => `
+    <div class="group-ip-row">
+      <div class="group-ip-main">
+        <span class="ip">${r.ip ? escapeHtml(r.ip) : '—'}</span>
+      </div>
+      <div class="group-ip-sub">${r.username ? escapeHtml(r.username) : 'no PSN ID'} · ${r.location ? escapeHtml(r.location) : 'no location'}</div>
+    </div>`;
+
+  const sections = [];
+  if(inserted.length){
+    sections.push(`<div class="group-section-label">New (${inserted.length})</div>${inserted.map(ipRow).join('')}`);
+  }
+  if(refreshed.length){
+    sections.push(`<div class="group-section-label">Refreshed — Last Seen updated (${refreshed.length})</div>${refreshed.map(ipRow).join('')}`);
+  }
+  const tallyBits = [];
+  if(autoMatched) tallyBits.push(`${autoMatched} auto-matched to an existing PSN ID`);
+  if(skippedCity) tallyBits.push(`${skippedCity} skipped (excluded city)`);
+  if(skippedJunk) tallyBits.push(`${skippedJunk} malformed row${skippedJunk===1?'':'s'} ignored`);
+  if(tallyBits.length){
+    sections.push(`<div class="group-section-label">Also</div><div class="group-ip-sub" style="padding:4px 2px;">${tallyBits.join(' · ')}</div>`);
+  }
+  if(!sections.length){
+    sections.push(`<div class="group-ip-empty">Nothing changed</div>`);
+  }
+
+  return showInfoModal({title:'Import complete', bodyHtml:`<div class="group-modal-scroll">${sections.join('')}</div>`});
 }
 
 function showInfoModal({title, bodyHtml}){
@@ -2515,7 +2579,7 @@ function showInfoModal({title, bodyHtml}){
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
-      <div class="modal-box">
+      <div class="modal-box group-modal-box">
         <h3>${title}</h3>
         <div class="modal-fields">${bodyHtml}</div>
         <div class="modal-actions">
@@ -4101,6 +4165,7 @@ function escapeHtml(s){
 search.addEventListener('input', render);
 exportBtn.addEventListener('click', exportFilteredCSV);
 manageViewersBtn.addEventListener('click', openManageViewerIds);
+recheckLocationsBtn.addEventListener('click', recheckAllLocations);
 
 init();
 </script>
