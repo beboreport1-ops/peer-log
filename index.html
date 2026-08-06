@@ -2294,7 +2294,7 @@ async function promptRenameViewerId(oldId){
         await sbFetch('peer_viewers', {method:'POST', headers:{'Prefer':'return=minimal'}, body: JSON.stringify([{viewer_id:newId, last_seen:lastSeen}])});
         const favRows = await sbFetch(`peer_favorites?select=username_key&viewer_id=eq.${encodeURIComponent(oldId)}`);
         if(favRows && favRows.length){
-          await sbFetch('peer_favorites', {
+          await sbFetch('peer_favorites?on_conflict=viewer_id,username_key', {
             method:'POST',
             headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
             body: JSON.stringify(favRows.map(r=>({viewer_id:newId, username_key:r.username_key})))
@@ -2405,7 +2405,7 @@ async function promptHideForViewers(usernames){
         const inserts = [];
         keys.forEach(key => checkedVids.forEach(vid => inserts.push({viewer_id:vid, username_key:key})));
         if(inserts.length){
-          await sbFetch('peer_hidden_for_viewer', {
+          await sbFetch('peer_hidden_for_viewer?on_conflict=viewer_id,username_key', {
             method:'POST',
             headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
             body: JSON.stringify(inserts)
@@ -2467,7 +2467,7 @@ async function toggleFavorite(username){
   render();
   try{
     if(goingToFav){
-      await sbFetch('peer_favorites', {
+      await sbFetch('peer_favorites?on_conflict=viewer_id,username_key', {
         method:'POST',
         headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
         body: JSON.stringify([{viewer_id:viewerId, username_key:key}])
