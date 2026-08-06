@@ -1435,7 +1435,7 @@
     .count b{font-size:22px;}
     .count::before{font-size:9px;}
     #dropzone, #exportBtn{display:none !important;}
-    .isp-info{display:none !important;}
+    .main-table .isp-info, .unlabeled-table .isp-info, .fav-table .isp-info{display:none !important;}
     .toolbar{gap:10px;}
     .search{padding:13px 16px 13px 30px;font-size:13.5px;}
     .label-input{min-width:50px;font-size:12px;}
@@ -1895,6 +1895,7 @@ async function init(){
   if(savedRole === 'view' || savedRole === 'admin'){
     role = savedRole;
     viewerId = savedViewerId || (savedRole === 'admin' ? '__admin__' : null);
+    if(role === 'view' && viewerId) touchViewerLastSeen(viewerId);
     showApp();
   } else {
     showGate();
@@ -1965,6 +1966,7 @@ function showGate(){
           sessionStorage.setItem('peerlog_role', role);
           sessionStorage.setItem('peerlog_viewer_id', viewerId);
           gateScreenEl.innerHTML = '';
+          touchViewerLastSeen(entered);
           showApp();
         } else {
           err.textContent = 'Incorrect ID';
@@ -2022,11 +2024,24 @@ logoutBtn.addEventListener('click', ()=>{
   location.reload();
 });
 
+async function touchViewerLastSeen(vid){
+  if(!vid) return;
+  try{
+    await sbFetch(`peer_viewers?viewer_id=eq.${encodeURIComponent(vid)}`, {
+      method:'PATCH',
+      headers:{'Prefer':'return=minimal'},
+      body: JSON.stringify({last_seen: new Date().toISOString()})
+    });
+  }catch(e){
+    console.error('failed to update viewer last_seen', e);
+  }
+}
+
 async function openManageViewerIds(){
   if(!isAdmin()) return;
   let viewers = [];
   try{
-    viewers = await sbFetch('peer_viewers?select=viewer_id&order=viewer_id.asc');
+    viewers = await sbFetch('peer_viewers?select=viewer_id,last_seen&order=viewer_id.asc');
   }catch(e){
     showToast('failed to load viewer IDs — check connection', true);
     return;
@@ -2040,6 +2055,7 @@ function renderManageViewerIdsModal(viewers){
       <div class="group-psn-name-line">
         <span class="group-member-name">${escapeHtml(v.viewer_id)}</span>
       </div>
+      <div class="group-ip-sub">${v.last_seen ? `last online ${formatLastSeen(v.last_seen)}` : 'never logged in'}</div>
       <div class="group-psn-actions-line">
         <button class="icon-btn rename-viewer-btn chip-btn chip-ghost" data-id="${escapeHtml(v.viewer_id)}">Rename</button>
         <button class="icon-btn delete-viewer-btn chip-btn chip-danger" data-id="${escapeHtml(v.viewer_id)}">Delete</button>
@@ -2131,7 +2147,9 @@ async function promptRenameViewerId(oldId){
       if(!newId) return {ok:false, message:'Enter an ID'};
       if(newId === oldId) return {ok:true};
       try{
-        await sbFetch('peer_viewers', {method:'POST', headers:{'Prefer':'return=minimal'}, body: JSON.stringify([{viewer_id:newId}])});
+        const oldRows = await sbFetch(`peer_viewers?select=last_seen&viewer_id=eq.${encodeURIComponent(oldId)}`);
+        const lastSeen = (oldRows && oldRows[0] && oldRows[0].last_seen) || null;
+        await sbFetch('peer_viewers', {method:'POST', headers:{'Prefer':'return=minimal'}, body: JSON.stringify([{viewer_id:newId, last_seen:lastSeen}])});
         const favRows = await sbFetch(`peer_favorites?select=username_key&viewer_id=eq.${encodeURIComponent(oldId)}`);
         if(favRows && favRows.length){
           await sbFetch('peer_favorites', {
