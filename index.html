@@ -159,6 +159,32 @@
     box-shadow:0 0 0 1px var(--phosphor), 0 0 10px var(--phosphor);
     animation:pulse-glow 2.4s ease-in-out infinite;
   }
+  .watch-indicator{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    margin-left:12px;
+    font-size:11px;
+    color:var(--phosphor);
+    text-transform:uppercase;
+    letter-spacing:.08em;
+  }
+  .dot.watch-dot{
+    background:var(--phosphor);
+    color:var(--phosphor);
+    box-shadow:0 0 0 1px var(--phosphor), 0 0 10px var(--phosphor);
+    animation:pulse-glow 1.4s ease-in-out infinite;
+  }
+  .health-banner{
+    margin:0 0 20px;
+    padding:10px 16px;
+    border:1px solid var(--warn);
+    background:rgba(234,179,8,.08);
+    color:var(--warn);
+    font-size:12px;
+    line-height:1.6;
+  }
+  .health-banner div{padding:2px 0;}
   .dot.syncing{
     background:var(--warn);color:var(--warn);
     box-shadow:0 0 0 1px var(--warn), 0 0 8px var(--warn);
@@ -1539,12 +1565,15 @@
       <h1>PEER<span>_</span>LOG</h1>
       <div class="sub">
         <span class="dot" id="syncDot"></span><span id="syncLabel">connecting...</span>
+        <span class="watch-indicator" id="watchIndicator" style="display:none;"><span class="dot watch-dot"></span>watching</span>
         <span class="role-tag" id="roleTag"></span>
         <button class="logout-link" id="logoutBtn">log out</button>
       </div>
     </div>
     <div class="count" id="count"><b>0</b>players loaded</div>
   </header>
+
+  <div id="healthBanner" class="health-banner" style="display:none;"></div>
 
   <div id="favoritesHolder"></div>
 
@@ -1561,6 +1590,9 @@
     <button class="btn" id="watchFolderBtn" style="display:none;">▶ Watch Folder</button>
     <button class="btn" id="manageViewersBtn" style="display:none;">Manage Viewer IDs</button>
     <button class="btn" id="recheckLocationsBtn" style="display:none;">Re-check All Locations</button>
+    <button class="btn" id="backupBtn" style="display:none;">Backup Database</button>
+    <button class="btn" id="restoreBtn" style="display:none;">Restore from Backup</button>
+    <input type="file" id="restoreFileInput" accept=".json" style="display:none;">
   </div>
 
   <div class="bulk-bar" id="bulkBar" style="display:none;">
@@ -1611,6 +1643,7 @@ const gateScreenEl = document.getElementById('gateScreen');
 const dropzone = document.getElementById('dropzone');
 const addRowBtn = document.getElementById('addRowBtn');
 const watchFolderBtn = document.getElementById('watchFolderBtn');
+const watchIndicator = document.getElementById('watchIndicator');
 const fileInput = document.getElementById('fileInput');
 const toolbar = document.getElementById('toolbar');
 const search = document.getElementById('search');
@@ -1621,6 +1654,10 @@ const countEl = document.getElementById('count');
 const exportBtn = document.getElementById('exportBtn');
 const manageViewersBtn = document.getElementById('manageViewersBtn');
 const recheckLocationsBtn = document.getElementById('recheckLocationsBtn');
+const backupBtn = document.getElementById('backupBtn');
+const restoreBtn = document.getElementById('restoreBtn');
+const restoreFileInput = document.getElementById('restoreFileInput');
+const healthBanner = document.getElementById('healthBanner');
 const bulkBar = document.getElementById('bulkBar');
 const bulkCount = document.getElementById('bulkCount');
 const bulkExportBtn = document.getElementById('bulkExportBtn');
@@ -2021,6 +2058,8 @@ async function showApp(){
   watchFolderBtn.style.display = (isAdmin() && isFileSystemAccessSupported()) ? 'inline-block' : 'none';
   manageViewersBtn.style.display = isAdmin() ? 'inline-block' : 'none';
   recheckLocationsBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+  backupBtn.style.display = isAdmin() ? 'inline-block' : 'none';
+  restoreBtn.style.display = isAdmin() ? 'inline-block' : 'none';
 
   await loadMyFavoritesData();
 
@@ -2034,6 +2073,40 @@ async function showApp(){
   } else {
     await refreshFromCloud();
   }
+  runHealthCheck();
+}
+
+function showHealthBanner(issues){
+  if(!healthBanner) return;
+  if(!issues.length){
+    healthBanner.style.display = 'none';
+    healthBanner.innerHTML = '';
+    return;
+  }
+  healthBanner.innerHTML = issues.map(i => `<div>⚠ ${escapeHtml(i)}</div>`).join('');
+  healthBanner.style.display = 'block';
+}
+
+async function runHealthCheck(){
+  const issues = [];
+
+  if(syncDot && syncDot.classList.contains('err')){
+    issues.push('Database connection issue — some data may be stale or fail to save until this recovers.');
+  }
+
+  try{
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch('https://ipwho.is/1.1.1.1', {signal: controller.signal});
+    clearTimeout(timeoutId);
+    if(!res.ok) throw new Error('bad response');
+    const data = await res.json();
+    if(!data || data.success === false) throw new Error('lookup failed');
+  }catch(e){
+    issues.push('Geolocation API appears to be down — new IP locations may not resolve until it recovers.');
+  }
+
+  showHealthBanner(issues);
 }
 
 async function loadMyFavoritesData(){
@@ -2510,6 +2583,94 @@ async function resolveGeoLocationsForIps(ips){
   await Promise.all(unique.map(ip => resolveGeoInfo(ip)));
 }
 
+async function backupDatabase(){
+  if(!isAdmin()) return;
+  showToast('preparing backup...');
+  try{
+    const [rows, labelRows, ipHiddenRows, viewerRows, favoriteRows] = await Promise.all([
+      sbFetch('peer_rows?select=*'),
+      sbFetch('peer_labels?select=*'),
+      sbFetch('peer_ip_hidden?select=*'),
+      sbFetch('peer_viewers?select=*'),
+      sbFetch('peer_favorites?select=*')
+    ]);
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      peer_rows: rows || [],
+      peer_labels: labelRows || [],
+      peer_ip_hidden: ipHiddenRows || [],
+      peer_viewers: viewerRows || [],
+      peer_favorites: favoriteRows || []
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `peer-log-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast(`backup downloaded — ${backup.peer_rows.length} rows`);
+  }catch(e){
+    console.error('backup failed', e);
+    showToast('backup failed — check connection', true);
+  }
+}
+
+async function restoreDatabaseFromFile(file){
+  if(!isAdmin() || !file) return;
+  let backup;
+  try{
+    const text = await file.text();
+    backup = JSON.parse(text);
+  }catch(e){
+    showToast('that file isn\'t a valid backup (bad JSON)', true);
+    return;
+  }
+  if(!backup || !Array.isArray(backup.peer_rows)){
+    showToast('that file isn\'t a valid Peer Log backup', true);
+    return;
+  }
+  const dateLabel = backup.exportedAt ? new Date(backup.exportedAt).toLocaleString() : 'unknown date';
+  await confirmModal({
+    title: `Restore backup from ${dateLabel}? This REPLACES all current data (players, labels, hidden IPs, viewer IDs, favorites) — cannot be undone.`,
+    submitLabel: 'Restore',
+    danger: true,
+    onConfirm: async () => {
+      showToast('restoring — this may take a moment...');
+      try{
+        await Promise.all([
+          sbFetch('peer_rows?id=gt.0', {method:'DELETE'}),
+          sbFetch('peer_labels?username_key=neq.__none__', {method:'DELETE'}),
+          sbFetch('peer_ip_hidden?ip=neq.__none__', {method:'DELETE'}),
+          sbFetch('peer_viewers?viewer_id=neq.__none__', {method:'DELETE'}),
+          sbFetch('peer_favorites?viewer_id=neq.__none__', {method:'DELETE'})
+        ]);
+        const insertIfAny = (table, rows) => (rows && rows.length)
+          ? sbFetch(table, {method:'POST', headers:{'Prefer':'return=minimal'}, body: JSON.stringify(rows)})
+          : Promise.resolve();
+        // peer_rows.id is an auto-generated identity column — drop the old
+        // ids from the backup so the database assigns fresh ones.
+        const rowsWithoutIds = (backup.peer_rows || []).map(({id, ...rest}) => rest);
+        await insertIfAny('peer_rows', rowsWithoutIds);
+        await Promise.all([
+          insertIfAny('peer_labels', backup.peer_labels),
+          insertIfAny('peer_ip_hidden', backup.peer_ip_hidden),
+          insertIfAny('peer_viewers', backup.peer_viewers),
+          insertIfAny('peer_favorites', backup.peer_favorites)
+        ]);
+        await loadMyFavoritesData();
+        await refreshFromCloud();
+        showToast('restore complete');
+      }catch(e){
+        console.error('restore failed', e);
+        showToast('restore failed partway through — check connection and your data', true);
+      }
+    }
+  });
+}
+
 async function recheckAllLocations(){
   if(!isAdmin()) return;
   const uniqueIps = [...new Set(rawRows.map(r => r.ip).filter(Boolean))];
@@ -2555,6 +2716,11 @@ function isFileSystemAccessSupported(){
   return typeof window.showDirectoryPicker === 'function';
 }
 
+function updateWatchIndicator(){
+  if(!watchIndicator) return;
+  watchIndicator.style.display = watchDirHandle ? 'inline-flex' : 'none';
+}
+
 function updateWatchButtonUI(){
   if(!watchFolderBtn) return;
   if(watchDirHandle){
@@ -2563,6 +2729,40 @@ function updateWatchButtonUI(){
   } else {
     watchFolderBtn.textContent = '▶ Watch Folder';
     watchFolderBtn.classList.remove('primary');
+  }
+  updateWatchIndicator();
+}
+
+function playImportChime(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start();
+    o.stop(ctx.currentTime + 0.4);
+  }catch(e){
+    console.error('chime failed', e);
+  }
+}
+
+function notifyWatchImport(fileNames){
+  playImportChime();
+  if('Notification' in window && Notification.permission === 'granted'){
+    try{
+      new Notification('Peer Log — new import', {
+        body: `Synced ${fileNames.length} file${fileNames.length>1?'s':''}: ${fileNames.join(', ')}`,
+        silent: true
+      });
+    }catch(e){
+      console.error('notification failed', e);
+    }
   }
 }
 
@@ -2643,6 +2843,7 @@ async function checkWatchedFolder(){
     }
     if(filesToImport.length){
       await handleFiles(filesToImport);
+      notifyWatchImport(filesToImport.map(f=>f.name));
     }
   }catch(e){
     console.error('folder watch check failed', e);
@@ -2655,6 +2856,9 @@ async function startFolderWatch(){
   if(!isFileSystemAccessSupported()){
     showToast("folder watching isn't supported in this browser — use Chrome or Edge", true);
     return;
+  }
+  if('Notification' in window && Notification.permission === 'default'){
+    try{ await Notification.requestPermission(); }catch(e){ /* ignore */ }
   }
   let handle = await loadWatchHandle();
   if(handle){
@@ -4450,6 +4654,12 @@ search.addEventListener('input', render);
 exportBtn.addEventListener('click', exportFilteredCSV);
 manageViewersBtn.addEventListener('click', openManageViewerIds);
 recheckLocationsBtn.addEventListener('click', recheckAllLocations);
+backupBtn.addEventListener('click', backupDatabase);
+restoreBtn.addEventListener('click', () => restoreFileInput.click());
+restoreFileInput.addEventListener('change', e => {
+  if(e.target.files.length) restoreDatabaseFromFile(e.target.files[0]);
+  restoreFileInput.value = '';
+});
 
 init();
 </script>
